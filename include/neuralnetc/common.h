@@ -10,10 +10,15 @@ enum nn_errors {
     NN_E_OUT_OF_MEM
 };
 
-#define CHK_ALLOC(ptr) {\
+#define CHK_ALLOC(ptr) do {\
     if (!(ptr)) {\
         return NN_E_OUT_OF_MEM;\
     }\
-}
+} while(0)
+
+#define NN_FREE_NULL(ptr) do {\
+    free(ptr);\
+    ptr = NULL;\
+} while(0)
 
 #endif /* COMMON_H */

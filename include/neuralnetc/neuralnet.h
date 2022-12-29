@@ -21,6 +21,7 @@ typedef struct {
 
 void nn_init_params(nn_arch *net)
 {
+    // TODO: Initialize weights and biases randomly based on activation function
     // Iterate through weights and biases and initialize them to 0 for now
     uint32_t i, l, on_prev, on_next, ow_prev, ow_next, ob_prev, ob_next;
     for (l = 0; l < net->n_hidden_layers + 1; ++l) {
@@ -137,7 +138,7 @@ void nn_forward(nn_arch *net)
         for (i = 0; i < rows; ++i) {
             sum = (nn_scalar_t) 0.0;
             for (j = 0; j < cols; ++j) {
-                // Matrix product between weights and neurons
+                // Matrix-vector product between weights and neurons
                 sum += net->weights[i*cols + j + ow] * net->neurons[j + on];
             }
             // Add the bias for this neuron
@@ -199,14 +200,14 @@ void nn_print(const nn_arch *net)
 
 void nn_free(nn_arch *net)
 {
-    free(net->neurons);
-    free(net->offsets_neurons);
-    free(net->n_neurons);
-    free(net->weights);
-    free(net->biases);
-    free(net->offsets_weights);
-    free(net->offsets_biases);
-    free(net->activations);
+    NN_FREE_NULL(net->neurons);
+    NN_FREE_NULL(net->offsets_neurons);
+    NN_FREE_NULL(net->n_neurons);
+    NN_FREE_NULL(net->weights);
+    NN_FREE_NULL(net->biases);
+    NN_FREE_NULL(net->offsets_weights);
+    NN_FREE_NULL(net->offsets_biases);
+    NN_FREE_NULL(net->activations);
 }
 
 #endif /* NEURAL_NET_H */

@@ -1,5 +1,5 @@
 CC=cc
-CFLAGS=-Wall -Wextra -Wpedantic -g -std=c17
+CFLAGS=-Wall -Wextra -Wpedantic -ggdb -std=c17
 
 INCLUDE=include
 SRC_DIR=src
