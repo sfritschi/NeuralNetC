@@ -5,12 +5,14 @@
 #include <neuralnetc/common.h>
 
 enum nn_activation_type {
-    NN_ACTIVATION_SIGMOID = 0,
+    NN_ACTIVATION_IDENTITY,
+    NN_ACTIVATION_SIGMOID,
     NN_ACTIVATION_RELU,
     NN_ACTIVATION_TANH
 };
 
 static const char *NN_ACTIVATION_NAMES[] = {
+    "identity",
     "sigmoid",
     "ReLU",
     "tanh"
@@ -37,6 +39,11 @@ nn_scalar_t nn_tanh_func(nn_scalar_t x)
 }
 
 // Declare global activation functions
+static const nn_activation nn_identity = {
+    NN_ACTIVATION_IDENTITY,
+    NULL
+};
+
 static const nn_activation nn_sigmoid = {
     NN_ACTIVATION_SIGMOID,
     &nn_sigmoid_func

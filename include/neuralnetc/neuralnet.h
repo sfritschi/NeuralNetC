@@ -40,7 +40,7 @@ void nn_init_params(nn_arch *net)
         }
         
         for (i = on_prev; i < on_next; ++i) {
-            net->neurons[i] = (nn_scalar_t) i;
+            net->neurons[i] = (nn_scalar_t) 0.0;
         }
     }
     
@@ -48,7 +48,7 @@ void nn_init_params(nn_arch *net)
     on_prev = net->offsets_neurons[l];
     on_next = net->offsets_neurons[l+1];
     for (i = on_prev; i < on_next; ++i) {
-        net->neurons[i] = (nn_scalar_t) i;
+        net->neurons[i] = (nn_scalar_t) 0.0;
     }
 }
 
@@ -110,7 +110,7 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
     net->n_neurons[l] = n_neurons[l];
     net->offsets_neurons[l+1] = total_neurons;
     
-    // Allocate weights and biases
+    // Allocate neurons, weights and biases
     CHK_ALLOC(net->neurons = (nn_scalar_t *) malloc(total_neurons * sizeof(nn_scalar_t)));
     CHK_ALLOC(net->weights = (nn_scalar_t *) malloc(total_weights * sizeof(nn_scalar_t)));
     CHK_ALLOC(net->biases  = (nn_scalar_t *) malloc(total_biases * sizeof(nn_scalar_t)));
@@ -118,6 +118,37 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
     nn_init_params(net);
     
     return NN_E_OK;
+}
+
+// Compute forward pass to evaluate neural network architecture
+void nn_forward(nn_arch *net)
+{
+    nn_scalar_t sum;
+    
+    uint32_t i, j, l, on, on_next, ow, ob, rows, cols;
+    for (l = 0; l < net->n_hidden_layers + 1; ++l) {
+        on      = net->offsets_neurons[l];
+        on_next = net->offsets_neurons[l+1];
+        ow      = net->offsets_weights[l];
+        ob      = net->offsets_biases[l];
+        
+        rows = net->n_neurons[l+1];
+        cols = net->n_neurons[l];
+        for (i = 0; i < rows; ++i) {
+            sum = (nn_scalar_t) 0.0;
+            for (j = 0; j < cols; ++j) {
+                // Matrix product between weights and neurons
+                sum += net->weights[i*cols + j + ow] * net->neurons[j + on];
+            }
+            // Add the bias for this neuron
+            sum += net->biases[i + ob];
+            // Apply activation function, if any
+            if (net->activations[l].f)
+                sum = net->activations[l].f(sum);
+            
+            net->neurons[i + on_next] = sum;
+        }
+    }
 }
 
 void nn_print(const nn_arch *net)
@@ -156,6 +187,7 @@ void nn_print(const nn_arch *net)
         printf("\n\n");
     }
     
+    printf("Layer #%u\n", l+1);
     on_prev = net->offsets_neurons[l];
     on_next = net->offsets_neurons[l+1];
     printf("#Neurons: %u\n", on_next - on_prev);
