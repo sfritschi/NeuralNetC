@@ -5,7 +5,7 @@
 #include <neuralnetc/common.h>
 
 enum nn_activation_type {
-    NN_ACTIVATION_IDENTITY,
+    NN_ACTIVATION_IDENTITY = 0,
     NN_ACTIVATION_SIGMOID,
     NN_ACTIVATION_RELU,
     NN_ACTIVATION_TANH
