@@ -46,7 +46,7 @@ void nn_init_params(nn_arch *net)
         }
 
         for (i = ob_prev; i < ob_next; ++i) {
-            net->biases[i] = (nn_diffable_t) {i, 0.0};
+            net->biases[i] = (nn_diffable_t) {0.0, 0.0};
             net->error_signals[i] = (nn_scalar_t) 0.0;
         }
         
@@ -135,19 +135,26 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
 }
 
 // Compute forward pass to evaluate neural network architecture
-void nn_forward(nn_arch *net)
+void nn_forward(nn_arch *net, const nn_scalar_t *x)
 {
     nn_scalar_t sum, activation, grad;
-    
+
     uint32_t i, j, l, on, on_next, ow, ob, rows, cols;
+    
+    // Set function argument at input layer
+    for (i = 0; i < net->n_neurons[0]; ++i) {
+        // offset is 0, since first layer
+        net->neurons[i].value = x[i];
+    }
+    
     for (l = 0; l < net->n_hidden_layers + 1; ++l) {
-        on      = net->offsets_neurons[l];
         on_next = net->offsets_neurons[l+1];
+        on      = net->offsets_neurons[l];
         ow      = net->offsets_weights[l];
         ob      = net->offsets_biases[l];
+        rows    = net->n_neurons[l+1];
+        cols    = net->n_neurons[l];
         
-        rows = net->n_neurons[l+1];
-        cols = net->n_neurons[l];
         for (i = 0; i < rows; ++i) {
             sum = (nn_scalar_t) 0.0;
             for (j = 0; j < cols; ++j) {
@@ -174,10 +181,73 @@ void nn_forward(nn_arch *net)
     }
 }
 
-void nn_backward(nn_arch *net)
+void nn_backward(nn_arch *net, const nn_scalar_t *y_label)
 {
-    (void) net;
-    assert(0 && "Not yet implemented...");
+    uint32_t i, j, k, l, on_next, on, ow_next, ow, ob_next, ob, rows, rows_next, cols;
+    // Compute error signal at final layer
+    on_next = net->offsets_neurons[net->n_hidden_layers+1];
+    on      = net->offsets_neurons[net->n_hidden_layers];
+    ob      = net->offsets_biases[net->n_hidden_layers];  // error signal offset
+    ow      = net->offsets_weights[net->n_hidden_layers];
+    rows    = net->n_neurons[net->n_hidden_layers+1];
+    cols    = net->n_neurons[net->n_hidden_layers];
+    
+    nn_scalar_t error_signal;
+    
+    for (i = 0; i < rows; ++i) {
+        // Note: Implicitly assumes squared error loss
+        // TODO: Add loss function structure to nn_arch
+        const nn_diffable_t neuron = net->neurons[i + on_next];
+        // del_L,i
+        error_signal = (nn_scalar_t)2.0 * (neuron.value - y_label[i]) * neuron.grad;
+        net->error_signals[i + ob] = error_signal;
+        
+        for (j = 0; j < cols; ++j) {
+            // grad(w)_ij,L = del_L,i * f_L-1,j
+            net->weights[i*cols + j + ow].grad = error_signal * 
+                net->neurons[j + on].value;
+        }
+        // grad(b)_i,L = del_L,i
+        net->biases[i + ob].grad = error_signal;
+    }
+    
+    // Iterate over previous layers to propagate error signal backwards
+    for (l = net->n_hidden_layers-1 ;; --l) {
+        on_next   = net->offsets_neurons[l+1];
+        on        = net->offsets_neurons[l];
+        ob_next   = net->offsets_biases[l+1];
+        ob        = net->offsets_biases[l];  // error signal offset
+        ow_next   = net->offsets_weights[l+1];
+        ow        = net->offsets_weights[l];
+        rows_next = net->n_neurons[l+2];
+        rows      = net->n_neurons[l+1];
+        cols      = net->n_neurons[l];
+        
+        for (i = 0; i < rows; ++i) {
+            error_signal = (nn_scalar_t) 0.0;
+            
+            // Compute current error signal using last visited layer
+            for (k = 0; k < rows_next; ++k) {
+                // del_l,i += del_l+1,k * w_ki,l+1
+                error_signal += net->error_signals[k + ob_next] * 
+                    net->weights[k*rows + i + ow_next].value;
+            }
+            // del_l,i = del_l,i * grad(f)_l,i
+            error_signal *= net->neurons[i + on_next].grad;
+            net->error_signals[i + ob] = error_signal;
+            
+            for (j = 0; j < cols; ++j) {
+                // grad(w)_ij,l = del_l,i * f_l-1,j
+                net->weights[i*cols + j + ow].grad = error_signal * 
+                    net->neurons[j + on].value;
+            }
+            // grad(b)_i,l = del_l,i
+            net->biases[i + ob].grad = error_signal;
+        }
+        
+        // Reached first layer; done
+        if (l == 0) break;
+    }
 }
 
 void nn_print(const nn_arch *net)
@@ -198,14 +268,17 @@ void nn_print(const nn_arch *net)
         printf("#Weights: (%u x %u)\n", rows, cols);
         for (i = 0; i < rows; ++i) {
             for (j = 0; j < cols; ++j) {
-                printf("%.3f ", net->weights[i*cols + j + ow].value);
+                const uint32_t index = i*cols + j + ow;
+                printf("(v: %.3f, g: %.3f) ", net->weights[index].value,
+                                              net->weights[index].grad);
             }
             printf("\n");
         }
         
         printf("#Biases: %u\n", ob_next - ob_prev);
         for (i = ob_prev; i < ob_next; ++i) {
-            printf("%.3f ", net->biases[i].value);
+            printf("(v: %.3f, g: %.3f) ", net->biases[i].value, 
+                                         net->biases[i].grad);
         }
         printf("\n");
         
