@@ -4,6 +4,7 @@
 #include <math.h>
 #include <neuralnetc/common.h>
 
+// NOTE: Do not change order, otherwise nn_write()/nn_read() is inconsistent
 enum nn_activation_type {
     NN_ACTIVATION_IDENTITY = 0,
     NN_ACTIVATION_SIGMOID,

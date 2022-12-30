@@ -1,13 +1,21 @@
 #ifndef NEURAL_NET_H
 #define NEURAL_NET_H
 
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
-
+#include <stdbool.h>
 #include <assert.h>
 
 #include <neuralnetc/common.h>
 #include <neuralnetc/activation.h>
+
+#define CHK_WRITE(buf, size, nmemb, fp) do {\
+    if (fwrite((buf), (size), (nmemb), (fp)) != (nmemb)) {\
+        fclose((fp));\
+        return NN_E_FAILED_TO_WRITE_FILE;\
+    }\
+} while(0)
 
 // Differentiable variable type
 typedef struct {
@@ -25,7 +33,7 @@ typedef struct {
     nn_diffable_t *biases;
     uint32_t *offsets_biases;
     nn_activation *activations;
-    nn_scalar_t *error_signals;  // buffer needed for back propagation
+    nn_scalar_t *error_signals;  // buffer needed for backpropagation
 } nn_arch;
 
 void nn_init_params(nn_arch *net)
@@ -63,6 +71,7 @@ void nn_init_params(nn_arch *net)
     }
 }
 
+// TODO: instead of nn_activation array use array of enums
 int nn_init(nn_arch *net, const uint32_t *n_neurons, 
             const nn_activation *activations, uint32_t n_layers)
 {
@@ -302,6 +311,55 @@ void nn_print(const nn_arch *net)
                                       net->neurons[i].grad);
     }
     printf("\n\n");
+}
+
+/*
+ * Writes all relevant data to binary file needed to reconstruct network.
+ * 
+ * File format:
+ * - 'NNC' signature
+ * - #layers (uint32_t)
+ * - #neurons for each layer (uint32_t)
+ * - enum codes (integers) associated with activation functions
+ * - neurons (nn_diffable_t)
+ * - weights (nn_diffable_t)
+ * - biases (nn_diffable_t)
+ * - error signals (nn_scalar_t)
+ *
+ */
+int nn_write(const nn_arch *net, const char *filename)
+{
+    FILE *fp = fopen(filename, "wb");
+    if (!fp) return NN_E_FAILED_TO_WRITE_FILE;
+    
+    // Check if architecture is little-endian
+    uint32_t i = 1;
+    const bool little_endian = *(const char *)&i == 1;
+    assert(little_endian && "TODO: Support big-endian architectures");
+    
+    const size_t sig_len = sizeof(FILE_SIGNATURE) - 1;
+    CHK_WRITE(FILE_SIGNATURE, 1, sig_len, fp);
+    
+    const uint32_t n_layers = net->n_hidden_layers + 2;
+    const uint32_t total_neurons = net->offsets_neurons[n_layers];
+    const uint32_t total_weights = net->offsets_weights[n_layers-1];
+    const uint32_t total_biases  = net->offsets_biases[n_layers-1];
+    
+    CHK_WRITE(&n_layers, sizeof(uint32_t), 1, fp);
+    CHK_WRITE(net->n_neurons, sizeof(uint32_t), n_layers, fp);
+    
+    for (i = 0; i < n_layers-1; ++i) {
+        CHK_WRITE(&net->activations[i].type, 
+            sizeof(enum nn_activation_type), 1, fp);
+    }
+    
+    CHK_WRITE(net->neurons, sizeof(nn_diffable_t), total_neurons, fp);
+    CHK_WRITE(net->weights, sizeof(nn_diffable_t), total_weights, fp);
+    CHK_WRITE(net->biases, sizeof(nn_diffable_t), total_biases, fp);
+    CHK_WRITE(net->error_signals, sizeof(nn_scalar_t), total_biases, fp);
+    
+    fclose(fp);
+    return NN_E_OK;
 }
 
 void nn_free(nn_arch *net)

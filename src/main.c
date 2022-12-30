@@ -28,18 +28,24 @@ int main(void)
     
     const nn_scalar_t x[] = {1.0, 0.0, -1.0, 0.0, 0.0, 1.0};
     
-    nn_print(&net);
+    //nn_print(&net);
     // Compute forward pass
     nn_forward(&net, x);
     
     printf("\n-- Forward Pass --\n");
-    nn_print(&net);
+    //nn_print(&net);
     
     const nn_scalar_t y[] = {0.5, 1.0};
     nn_backward(&net, y);
     
     printf("\n-- Backward Pass --\n");
-    nn_print(&net);
+    //nn_print(&net);
+    
+    if (nn_write(&net, "network.dat") != NN_E_OK) {
+        fprintf(stderr, "Failed to write network to file\n");
+        nn_free(&net);
+        return -1;
+    }
     
     nn_free(&net);
 
