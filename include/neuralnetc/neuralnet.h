@@ -42,11 +42,11 @@ void nn_init_params(nn_arch *net)
         ob_next = net->offsets_biases[l+1];
 
         for (i = ow_prev; i < ow_next; ++i) {
-            net->weights[i] = (nn_diffable_t) {i, 0.0};
+            net->weights[i] = (nn_diffable_t) {1.0, 0.0};
         }
 
         for (i = ob_prev; i < ob_next; ++i) {
-            net->biases[i] = (nn_diffable_t) {0.0, 0.0};
+            net->biases[i] = (nn_diffable_t) {1.0, 0.0};
             net->error_signals[i] = (nn_scalar_t) 0.0;
         }
         
@@ -210,7 +210,10 @@ void nn_backward(nn_arch *net, const nn_scalar_t *y_label)
         // grad(b)_i,L = del_L,i
         net->biases[i + ob].grad = error_signal;
     }
-    
+
+    if (net->n_hidden_layers == 0)
+        return;  // no hidden layers; done
+        
     // Iterate over previous layers to propagate error signal backwards
     for (l = net->n_hidden_layers-1 ;; --l) {
         on_next   = net->offsets_neurons[l+1];
@@ -269,7 +272,7 @@ void nn_print(const nn_arch *net)
         for (i = 0; i < rows; ++i) {
             for (j = 0; j < cols; ++j) {
                 const uint32_t index = i*cols + j + ow;
-                printf("(v: %.3f, g: %.3f) ", net->weights[index].value,
+                printf("(v: %.4e, g: %.4e) ", net->weights[index].value,
                                               net->weights[index].grad);
             }
             printf("\n");
@@ -277,14 +280,14 @@ void nn_print(const nn_arch *net)
         
         printf("#Biases: %u\n", ob_next - ob_prev);
         for (i = ob_prev; i < ob_next; ++i) {
-            printf("(v: %.3f, g: %.3f) ", net->biases[i].value, 
-                                         net->biases[i].grad);
+            printf("(v: %.4e, g: %.4e) ", net->biases[i].value, 
+                                          net->biases[i].grad);
         }
         printf("\n");
         
         printf("#Neurons: %u\n", on_next - on_prev);
         for (i = on_prev; i < on_next; ++i) {
-            printf("(v: %.3f, g: %.3f) ", net->neurons[i].value, 
+            printf("(v: %.4e, g: %.4e) ", net->neurons[i].value, 
                                           net->neurons[i].grad);
         }
         printf("\n\n");
@@ -295,7 +298,7 @@ void nn_print(const nn_arch *net)
     on_next = net->offsets_neurons[l+1];
     printf("#Neurons: %u\n", on_next - on_prev);
     for (i = on_prev; i < on_next; ++i) {
-        printf("(v: %.3f, g: %.3f) ", net->neurons[i].value, 
+        printf("(v: %.4e, g: %.4e) ", net->neurons[i].value, 
                                       net->neurons[i].grad);
     }
     printf("\n\n");
