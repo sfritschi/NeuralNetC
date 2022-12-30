@@ -27,7 +27,7 @@ typedef struct {
 void nn_init_params(nn_arch *net)
 {
     // TODO: Initialize weights and biases randomly based on activation function
-    // Iterate through weights and biases and initialize them to 0 for now
+    //       using PCG32 random number generator
     uint32_t i, l, on_prev, on_next, ow_prev, ow_next, ob_prev, ob_next;
     for (l = 0; l < net->n_hidden_layers + 1; ++l) {
         on_prev = net->offsets_neurons[l];
@@ -216,6 +216,8 @@ void nn_print(const nn_arch *net)
 
 void nn_free(nn_arch *net)
 {
+    net->n_hidden_layers = 0;
+    
     NN_FREE_NULL(net->neurons);
     NN_FREE_NULL(net->offsets_neurons);
     NN_FREE_NULL(net->n_neurons);

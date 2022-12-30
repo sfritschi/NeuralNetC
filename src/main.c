@@ -4,6 +4,7 @@
 int main(void)
 {
     nn_arch net;
+    
     const uint32_t n_layers = 5;
     const uint32_t n_neurons[] = {2, 3, 4, 2, 1};
     const nn_activation activations[] = {nn_ReLU, nn_ReLU, nn_ReLU, nn_identity};
