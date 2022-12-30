@@ -316,7 +316,7 @@ void nn_print(const nn_arch *net)
 /*
  * Writes all relevant data to binary file needed to reconstruct network.
  * 
- * File format:
+ * File format (binary, little-endian):
  * - 'NNC' signature
  * - #layers (uint32_t)
  * - #neurons for each layer (uint32_t)
@@ -357,6 +357,18 @@ int nn_write(const nn_arch *net, const char *filename)
     CHK_WRITE(net->weights, sizeof(nn_diffable_t), total_weights, fp);
     CHK_WRITE(net->biases, sizeof(nn_diffable_t), total_biases, fp);
     CHK_WRITE(net->error_signals, sizeof(nn_scalar_t), total_biases, fp);
+    
+    fclose(fp);
+    return NN_E_OK;
+}
+
+int nn_read(nn_arch *net, const char *filename)
+{
+    FILE *fp = fopen(filename, "rb");
+    if (!fp) return NN_E_FAILED_TO_READ_FILE;
+    
+    // TODO: Read binary data into net
+    (void) net;
     
     fclose(fp);
     return NN_E_OK;

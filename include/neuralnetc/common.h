@@ -10,7 +10,8 @@ enum nn_errors {
     NN_E_OK = 0,
     NN_E_TOO_FEW_LAYERS,
     NN_E_OUT_OF_MEM,
-    NN_E_FAILED_TO_WRITE_FILE
+    NN_E_FAILED_TO_WRITE_FILE,
+    NN_E_FAILED_TO_READ_FILE
 };
 
 #define CHK_ALLOC(ptr) do {\
