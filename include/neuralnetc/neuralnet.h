@@ -8,8 +8,13 @@
 #include <neuralnetc/activation.h>
 
 typedef struct {
+    nn_scalar_t value;
+    nn_scalar_t grad;    
+} nn_neuron;
+
+typedef struct {
     uint32_t n_hidden_layers;  // n_layers - 2
-    nn_scalar_t *neurons;
+    nn_neuron *neurons;
     uint32_t *n_neurons;
     uint32_t *offsets_neurons;
     nn_scalar_t *weights;
@@ -41,7 +46,7 @@ void nn_init_params(nn_arch *net)
         }
         
         for (i = on_prev; i < on_next; ++i) {
-            net->neurons[i] = (nn_scalar_t) 0.0;
+            net->neurons[i] = (nn_neuron) {0.0, 0.0};
         }
     }
     
@@ -49,7 +54,7 @@ void nn_init_params(nn_arch *net)
     on_prev = net->offsets_neurons[l];
     on_next = net->offsets_neurons[l+1];
     for (i = on_prev; i < on_next; ++i) {
-        net->neurons[i] = (nn_scalar_t) 0.0;
+        net->neurons[i] = (nn_neuron) {0.0, 0.0};
     }
 }
 
@@ -112,7 +117,7 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
     net->offsets_neurons[l+1] = total_neurons;
     
     // Allocate neurons, weights and biases
-    CHK_ALLOC(net->neurons = (nn_scalar_t *) malloc(total_neurons * sizeof(nn_scalar_t)));
+    CHK_ALLOC(net->neurons = (nn_neuron *) malloc(total_neurons * sizeof(nn_neuron)));
     CHK_ALLOC(net->weights = (nn_scalar_t *) malloc(total_weights * sizeof(nn_scalar_t)));
     CHK_ALLOC(net->biases  = (nn_scalar_t *) malloc(total_biases * sizeof(nn_scalar_t)));
 
@@ -124,7 +129,7 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
 // Compute forward pass to evaluate neural network architecture
 void nn_forward(nn_arch *net)
 {
-    nn_scalar_t sum;
+    nn_scalar_t sum, activation, grad;
     
     uint32_t i, j, l, on, on_next, ow, ob, rows, cols;
     for (l = 0; l < net->n_hidden_layers + 1; ++l) {
@@ -139,15 +144,24 @@ void nn_forward(nn_arch *net)
             sum = (nn_scalar_t) 0.0;
             for (j = 0; j < cols; ++j) {
                 // Matrix-vector product between weights and neurons
-                sum += net->weights[i*cols + j + ow] * net->neurons[j + on];
+                sum += net->weights[i*cols + j + ow] * net->neurons[j + on].value;
             }
             // Add the bias for this neuron
             sum += net->biases[i + ob];
-            // Apply activation function, if any
-            if (net->activations[l].f)
-                sum = net->activations[l].f(sum);
             
-            net->neurons[i + on_next] = sum;
+            activation = sum;
+            grad = (nn_scalar_t) 1.0;  // identity activation gradient
+            // Apply activation function, if any
+            const nn_activation act = net->activations[l];
+            if (act.f && act.gradf) {
+                activation = act.f(activation);
+                grad       = act.gradf(activation);
+            }
+            
+            net->neurons[i + on_next] = (nn_neuron) {
+                activation,
+                grad
+            };
         }
     }
 }
@@ -183,7 +197,8 @@ void nn_print(const nn_arch *net)
         
         printf("#Neurons: %u\n", on_next - on_prev);
         for (i = on_prev; i < on_next; ++i) {
-            printf("%.3f ", net->neurons[i]);
+            printf("(v: %.3f, g: %.3f) ", net->neurons[i].value, 
+                                          net->neurons[i].grad);
         }
         printf("\n\n");
     }
@@ -193,7 +208,8 @@ void nn_print(const nn_arch *net)
     on_next = net->offsets_neurons[l+1];
     printf("#Neurons: %u\n", on_next - on_prev);
     for (i = on_prev; i < on_next; ++i) {
-        printf("%.3f ", net->neurons[i]);
+        printf("(v: %.3f, g: %.3f) ", net->neurons[i].value, 
+                                      net->neurons[i].grad);
     }
     printf("\n\n");
 }
