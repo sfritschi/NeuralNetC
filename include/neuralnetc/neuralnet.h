@@ -4,24 +4,28 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <assert.h>
+
 #include <neuralnetc/common.h>
 #include <neuralnetc/activation.h>
 
+// Differentiable variable type
 typedef struct {
     nn_scalar_t value;
     nn_scalar_t grad;    
-} nn_neuron;
+} nn_diffable_t;
 
 typedef struct {
     uint32_t n_hidden_layers;  // n_layers - 2
-    nn_neuron *neurons;
+    nn_diffable_t *neurons;
     uint32_t *n_neurons;
     uint32_t *offsets_neurons;
-    nn_scalar_t *weights;
+    nn_diffable_t *weights;
     uint32_t *offsets_weights;
-    nn_scalar_t *biases;
+    nn_diffable_t *biases;
     uint32_t *offsets_biases;
-    nn_activation *activations;    
+    nn_activation *activations;
+    nn_scalar_t *error_signals;  // buffer needed for back propagation
 } nn_arch;
 
 void nn_init_params(nn_arch *net)
@@ -38,15 +42,16 @@ void nn_init_params(nn_arch *net)
         ob_next = net->offsets_biases[l+1];
 
         for (i = ow_prev; i < ow_next; ++i) {
-            net->weights[i] = (nn_scalar_t) i;
+            net->weights[i] = (nn_diffable_t) {i, 0.0};
         }
 
         for (i = ob_prev; i < ob_next; ++i) {
-            net->biases[i] = (nn_scalar_t) i;
+            net->biases[i] = (nn_diffable_t) {i, 0.0};
+            net->error_signals[i] = (nn_scalar_t) 0.0;
         }
         
         for (i = on_prev; i < on_next; ++i) {
-            net->neurons[i] = (nn_neuron) {0.0, 0.0};
+            net->neurons[i] = (nn_diffable_t) {0.0, 0.0};
         }
     }
     
@@ -54,7 +59,7 @@ void nn_init_params(nn_arch *net)
     on_prev = net->offsets_neurons[l];
     on_next = net->offsets_neurons[l+1];
     for (i = on_prev; i < on_next; ++i) {
-        net->neurons[i] = (nn_neuron) {0.0, 0.0};
+        net->neurons[i] = (nn_diffable_t) {0.0, 0.0};
     }
 }
 
@@ -68,6 +73,7 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
     net->weights = NULL;
     net->offsets_weights = NULL;
     net->biases = NULL;
+    net->error_signals = NULL;
     net->offsets_biases = NULL;
     net->activations = NULL;
     
@@ -116,10 +122,12 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
     net->n_neurons[l] = n_neurons[l];
     net->offsets_neurons[l+1] = total_neurons;
     
-    // Allocate neurons, weights and biases
-    CHK_ALLOC(net->neurons = (nn_neuron *) malloc(total_neurons * sizeof(nn_neuron)));
-    CHK_ALLOC(net->weights = (nn_scalar_t *) malloc(total_weights * sizeof(nn_scalar_t)));
-    CHK_ALLOC(net->biases  = (nn_scalar_t *) malloc(total_biases * sizeof(nn_scalar_t)));
+    // Allocate remaining buffers
+    CHK_ALLOC(net->neurons = (nn_diffable_t *) malloc(total_neurons * sizeof(nn_diffable_t)));
+    CHK_ALLOC(net->weights = (nn_diffable_t *) malloc(total_weights * sizeof(nn_diffable_t)));
+    CHK_ALLOC(net->biases  = (nn_diffable_t *) malloc(total_biases * sizeof(nn_diffable_t)));
+    // Note: Error signals have same exact dimensions as biases
+    CHK_ALLOC(net->error_signals = (nn_scalar_t *) malloc(total_biases * sizeof(nn_scalar_t)));
 
     nn_init_params(net);
     
@@ -144,10 +152,10 @@ void nn_forward(nn_arch *net)
             sum = (nn_scalar_t) 0.0;
             for (j = 0; j < cols; ++j) {
                 // Matrix-vector product between weights and neurons
-                sum += net->weights[i*cols + j + ow] * net->neurons[j + on].value;
+                sum += net->weights[i*cols + j + ow].value * net->neurons[j + on].value;
             }
             // Add the bias for this neuron
-            sum += net->biases[i + ob];
+            sum += net->biases[i + ob].value;
             
             activation = sum;
             grad = (nn_scalar_t) 1.0;  // identity activation gradient
@@ -158,12 +166,18 @@ void nn_forward(nn_arch *net)
                 grad       = act.gradf(activation);
             }
             
-            net->neurons[i + on_next] = (nn_neuron) {
+            net->neurons[i + on_next] = (nn_diffable_t) {
                 activation,
                 grad
             };
         }
     }
+}
+
+void nn_backward(nn_arch *net)
+{
+    (void) net;
+    assert(0 && "Not yet implemented...");
 }
 
 void nn_print(const nn_arch *net)
@@ -184,14 +198,14 @@ void nn_print(const nn_arch *net)
         printf("#Weights: (%u x %u)\n", rows, cols);
         for (i = 0; i < rows; ++i) {
             for (j = 0; j < cols; ++j) {
-                printf("%.3f ", net->weights[i*cols + j + ow]);
+                printf("%.3f ", net->weights[i*cols + j + ow].value);
             }
             printf("\n");
         }
         
         printf("#Biases: %u\n", ob_next - ob_prev);
         for (i = ob_prev; i < ob_next; ++i) {
-            printf("%.3f ", net->biases[i]);
+            printf("%.3f ", net->biases[i].value);
         }
         printf("\n");
         
@@ -223,6 +237,7 @@ void nn_free(nn_arch *net)
     NN_FREE_NULL(net->n_neurons);
     NN_FREE_NULL(net->weights);
     NN_FREE_NULL(net->biases);
+    NN_FREE_NULL(net->error_signals);
     NN_FREE_NULL(net->offsets_weights);
     NN_FREE_NULL(net->offsets_biases);
     NN_FREE_NULL(net->activations);
