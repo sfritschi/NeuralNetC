@@ -1,17 +1,25 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include <stdbool.h>
+#include <endian.h>
+
 typedef float nn_scalar_t;
 typedef nn_scalar_t (* nn_funcptr_t)(nn_scalar_t);
 
 static const char FILE_SIGNATURE[] = "NNC";
+// Subtract 1 due to null terminator
+#define SIGNATURE_LEN (sizeof(FILE_SIGNATURE) - 1)
 
 enum nn_errors {
     NN_E_OK = 0,
+    NN_E_NET_UNINITIALIZED,
+    NN_E_NET_ALREADY_INITIALIZED,
     NN_E_TOO_FEW_LAYERS,
     NN_E_OUT_OF_MEM,
     NN_E_FAILED_TO_WRITE_FILE,
-    NN_E_FAILED_TO_READ_FILE
+    NN_E_FAILED_TO_READ_FILE,
+    NN_E_UNRECOGNIZED_READ_SIGNATURE
 };
 
 #define CHK_ALLOC(ptr) do {\

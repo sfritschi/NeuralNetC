@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <assert.h>
 
 #include <neuralnetc/common.h>
@@ -16,6 +15,35 @@
         return NN_E_FAILED_TO_WRITE_FILE;\
     }\
 } while(0)
+
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#define CHK_READ(buf, size, nmemb, fp) do {\
+    if (fread((buf), (size), (nmemb), (fp)) != (nmemb)) {\
+        fclose((fp));\
+        return NN_E_FAILED_TO_READ_FILE;\
+    }\
+} while(0)
+#elif __BYTE_ORDER == __BIG_ENDIAN
+#define CHK_READ(buf, size, nmemb, fp) do {\
+    if (fread((buf), (size), (nmemb), (fp)) != (nmemb)) {\
+        fclose((fp));\
+        return NN_E_FAILED_TO_READ_FILE;\
+    }\
+    {\
+        uint32_t i, j;\
+        for (i = 0; i < (nmemb); ++i) {\
+            uint8_t *bytes = (uint8_t *)&(buf)[i];\
+            for (j = 0; j < (size) / 2; ++j) {\
+                const uint8_t temp = bytes[j];\
+                bytes[j] = bytes[(size)-1-j];\
+                bytes[(size)-1-j] = temp;\
+            }\
+        }\
+    }\
+} while(0)
+#else
+#error "Unrecognized byte order"
+#endif
 
 // Differentiable variable type
 typedef struct {
@@ -34,9 +62,10 @@ typedef struct {
     uint32_t *offsets_biases;
     nn_activation *activations;
     nn_scalar_t *error_signals;  // buffer needed for backpropagation
+    uint8_t is_initialized;
 } nn_arch;
 
-void nn_init_params(nn_arch *net)
+static void nn_init_params(nn_arch *net)
 {
     // TODO: Initialize weights and biases randomly based on activation function
     //       using PCG32 random number generator
@@ -71,20 +100,16 @@ void nn_init_params(nn_arch *net)
     }
 }
 
-// TODO: instead of nn_activation array use array of enums
+// Return empty network
+nn_arch nn_init_empty() {
+    return (nn_arch) {0};
+}
+
 int nn_init(nn_arch *net, const uint32_t *n_neurons, 
-            const nn_activation *activations, uint32_t n_layers)
+            const enum nn_activation_type *activations, uint32_t n_layers)
 {
-    // Set all pointers to NULL
-    net->neurons = NULL;
-    net->offsets_neurons = NULL;
-    net->n_neurons = NULL;
-    net->weights = NULL;
-    net->offsets_weights = NULL;
-    net->biases = NULL;
-    net->error_signals = NULL;
-    net->offsets_biases = NULL;
-    net->activations = NULL;
+    if (!net || net->is_initialized)
+        return NN_E_NET_ALREADY_INITIALIZED;
     
     if (n_layers < 2) {
         return NN_E_TOO_FEW_LAYERS;
@@ -115,7 +140,7 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
         const uint32_t neurons_next = n_neurons[l+1];
  
         // Initialize number of neurons and activation functions per layer
-        net->activations[l] = activations[l];
+        net->activations[l] = NN_ACTIVATIONS[activations[l]];
         net->n_neurons[l] = neurons_prev;
         total_neurons += neurons_prev;
         total_weights += neurons_prev * neurons_next;
@@ -140,19 +165,25 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
 
     nn_init_params(net);
     
+    // Set initialization flag
+    net->is_initialized = 1;
+    
     return NN_E_OK;
 }
 
 // Compute forward pass to evaluate neural network architecture
-void nn_forward(nn_arch *net, const nn_scalar_t *x)
+int nn_forward(nn_arch *net, const nn_scalar_t *x)
 {
+    if (!net || !net->is_initialized)
+        return NN_E_NET_UNINITIALIZED;
+    
     nn_scalar_t sum, activation, grad;
 
     uint32_t i, j, l, on, on_next, ow, ob, rows, cols;
     
     // Set function argument at input layer
     for (i = 0; i < net->n_neurons[0]; ++i) {
-        // offset is 0, since first layer
+        // offset is 0, since we are in the first layer
         net->neurons[i].value = x[i];
     }
     
@@ -188,10 +219,15 @@ void nn_forward(nn_arch *net, const nn_scalar_t *x)
             };
         }
     }
+    
+    return NN_E_OK;
 }
 
-void nn_backward(nn_arch *net, const nn_scalar_t *y_label)
+int nn_backward(nn_arch *net, const nn_scalar_t *y_label)
 {
+    if (!net || !net->is_initialized)
+        return NN_E_NET_UNINITIALIZED;
+        
     uint32_t i, j, k, l, on_next, on, ow_next, ow, ob_next, ob, rows, rows_next, cols;
     // Compute error signal at final layer
     on_next = net->offsets_neurons[net->n_hidden_layers+1];
@@ -221,7 +257,7 @@ void nn_backward(nn_arch *net, const nn_scalar_t *y_label)
     }
 
     if (net->n_hidden_layers == 0)
-        return;  // no hidden layers; done
+        return NN_E_OK;  // no hidden layers; done
         
     // Iterate over previous layers to propagate error signal backwards
     for (l = net->n_hidden_layers-1 ;; --l) {
@@ -246,6 +282,8 @@ void nn_backward(nn_arch *net, const nn_scalar_t *y_label)
             }
             // del_l,i = del_l,i * grad(f)_l,i
             error_signal *= net->neurons[i + on_next].grad;
+            // NOTE: No need to store error signals for ALL layers.
+            //       Only required for previous layer
             net->error_signals[i + ob] = error_signal;
             
             for (j = 0; j < cols; ++j) {
@@ -260,10 +298,15 @@ void nn_backward(nn_arch *net, const nn_scalar_t *y_label)
         // Reached first layer; done
         if (l == 0) break;
     }
+    
+    return NN_E_OK;
 }
 
-void nn_print(const nn_arch *net)
+int nn_print(const nn_arch *net)
 {
+    if (!net || !net->is_initialized)
+        return NN_E_NET_UNINITIALIZED;
+        
     printf("#Hidden Layers: %u\n\n", net->n_hidden_layers);
     uint32_t i, j, l, on_prev, on_next, ow, ob_prev, ob_next, rows, cols;
     for (l = 0; l < net->n_hidden_layers + 1; ++l) {
@@ -311,6 +354,8 @@ void nn_print(const nn_arch *net)
                                       net->neurons[i].grad);
     }
     printf("\n\n");
+    
+    return NN_E_OK;
 }
 
 /*
@@ -329,54 +374,170 @@ void nn_print(const nn_arch *net)
  */
 int nn_write(const nn_arch *net, const char *filename)
 {
+    if (!net || !net->is_initialized)
+        return NN_E_NET_UNINITIALIZED;
+        
     FILE *fp = fopen(filename, "wb");
     if (!fp) return NN_E_FAILED_TO_WRITE_FILE;
     
-    // Check if architecture is little-endian
-    uint32_t i = 1;
-    const bool little_endian = *(const char *)&i == 1;
-    assert(little_endian && "TODO: Support big-endian architectures");
-    
-    const size_t sig_len = sizeof(FILE_SIGNATURE) - 1;
-    CHK_WRITE(FILE_SIGNATURE, 1, sig_len, fp);
-    
+    uint32_t i;
     const uint32_t n_layers = net->n_hidden_layers + 2;
     const uint32_t total_neurons = net->offsets_neurons[n_layers];
     const uint32_t total_weights = net->offsets_weights[n_layers-1];
     const uint32_t total_biases  = net->offsets_biases[n_layers-1];
     
+    CHK_WRITE(FILE_SIGNATURE, 1, SIGNATURE_LEN, fp);
+    
+    // Check if architecture is little-endian
+    #if __BYTE_ORDER == __LITTLE_ENDIAN
     CHK_WRITE(&n_layers, sizeof(uint32_t), 1, fp);
     CHK_WRITE(net->n_neurons, sizeof(uint32_t), n_layers, fp);
     
     for (i = 0; i < n_layers-1; ++i) {
         CHK_WRITE(&net->activations[i].type, 
-            sizeof(enum nn_activation_type), 1, fp);
+            sizeof(net->activations[0].type), 1, fp);
     }
     
-    CHK_WRITE(net->neurons, sizeof(nn_diffable_t), total_neurons, fp);
-    CHK_WRITE(net->weights, sizeof(nn_diffable_t), total_weights, fp);
-    CHK_WRITE(net->biases, sizeof(nn_diffable_t), total_biases, fp);
-    CHK_WRITE(net->error_signals, sizeof(nn_scalar_t), total_biases, fp);
+    CHK_WRITE(net->neurons, sizeof(net->neurons[0]), total_neurons, fp);
+    CHK_WRITE(net->weights, sizeof(net->weights[0]), total_weights, fp);
+    CHK_WRITE(net->biases, sizeof(net->biases[0]), total_biases, fp);
+    CHK_WRITE(net->error_signals, sizeof(net->error_signals[0]), total_biases, fp);
+    
+    #elif __BYTE_ORDER == __BIG_ENDIAN
+    #define REVERSE_WRITE(data, nelems, fp) do {\
+        const uint32_t size = sizeof((data)[0]);\
+        for (uint32_t i = 0; i < (nelems); ++i) {\
+            const uint8_t *bytes = (const uint8_t *)&(data)[i];\
+            for (uint32_t j = 0; j < size; ++j) {\
+                CHK_WRITE(&bytes[size - 1 - j], sizeof(uint8_t), 1, (fp));\
+            }\
+        }\
+    } while(0)
+    
+    // Big endian byte order -> swap bytes
+    REVERSE_WRITE(&n_layers, 1, fp);
+    // Write reversed number of neurons to file
+    REVERSE_WRITE(net->n_neurons, n_layers, fp);
+    
+    // TODO: Resolve issue with index variable 'i' in macro shadowing local variable
+    for (uint32_t index = 0; index < n_layers-1; ++index) {
+        REVERSE_WRITE(&net->activations[index].type, 1, fp);
+    }
+    
+    // Write neurons, weights, biases and error signals to file
+    REVERSE_WRITE(net->neurons, total_neurons, fp);
+    REVERSE_WRITE(net->weights, total_weights, fp);
+    REVERSE_WRITE(net->biases, total_biases, fp);
+    REVERSE_WRITE(net->error_signals, total_biases, fp);
+    
+    #else
+    #error "Unrecognized byte order"
+    #endif
     
     fclose(fp);
     return NN_E_OK;
 }
 
+/*
+ *  Reads network from given file to 
+ */
 int nn_read(nn_arch *net, const char *filename)
 {
+    if (!net || net->is_initialized)
+        return NN_E_NET_ALREADY_INITIALIZED;
+        
     FILE *fp = fopen(filename, "rb");
     if (!fp) return NN_E_FAILED_TO_READ_FILE;
     
-    // TODO: Read binary data into net
-    (void) net;
+    // Read signature
+    uint32_t i;
+    char signature_buf[SIGNATURE_LEN];
+    CHK_READ(signature_buf, 1, SIGNATURE_LEN, fp);
+    
+    for (i = 0; i < SIGNATURE_LEN; ++i) {
+        if (signature_buf[i] != FILE_SIGNATURE[i]) {
+            fclose(fp);
+            return NN_E_UNRECOGNIZED_READ_SIGNATURE;
+        }
+    }
+        
+    // Read number of layers
+    uint32_t n_layers;
+    CHK_READ(&n_layers, sizeof(uint32_t), 1, fp);
+    if (n_layers < 2) {
+        fclose(fp);
+        return NN_E_TOO_FEW_LAYERS;
+    }
+    const uint32_t n_layers_size = n_layers * sizeof(uint32_t);
+    
+    net->n_hidden_layers = n_layers - 2;
+    // Allocate arrays
+    CHK_ALLOC(net->n_neurons = (uint32_t *) malloc(n_layers_size));
+    CHK_ALLOC(net->offsets_neurons = (uint32_t *) malloc((n_layers+1)*sizeof(uint32_t)));
+    CHK_ALLOC(net->offsets_weights = (uint32_t *) malloc(n_layers_size));
+    CHK_ALLOC(net->offsets_biases  = (uint32_t *) malloc(n_layers_size));
+    CHK_ALLOC(net->activations = (nn_activation *) malloc((n_layers-1)*sizeof(nn_activation)));
+    
+    // Read number of neurons per layer
+    CHK_READ(net->n_neurons, sizeof(net->n_neurons[0]), n_layers, fp);
+    // Compute offsets for each layer
+    uint32_t total_neurons = 0;
+    uint32_t total_weights = 0;
+    uint32_t total_biases  = 0;
+
+    // Initialize offsets to 0
+    net->offsets_neurons[0] = 0;
+    net->offsets_weights[0] = 0;
+    net->offsets_biases[0]  = 0;
+    
+    // Read enum codes of activation functions and compute offsets
+    for (i = 0; i < n_layers-1; ++i) {
+        enum nn_activation_type activation;
+        CHK_READ(&activation, sizeof(enum nn_activation_type), 1, fp);
+        net->activations[i] = NN_ACTIVATIONS[activation];
+        
+        const uint32_t neurons_prev = net->n_neurons[i];
+        const uint32_t neurons_next = net->n_neurons[i+1];
+ 
+        total_neurons += neurons_prev;
+        total_weights += neurons_prev * neurons_next;
+        total_biases  += neurons_next;
+
+        // Set offsets in weights and biases arrays
+        net->offsets_neurons[i+1] = total_neurons;
+        net->offsets_weights[i+1] = total_weights;
+        net->offsets_biases[i+1]  = total_biases;
+    }
+    // Number of neurons in output
+    total_neurons += net->n_neurons[i];
+    net->offsets_neurons[i+1] = total_neurons;
+    
+    // Allocate & read remaining buffers
+    CHK_ALLOC(net->neurons = (nn_diffable_t *) malloc(total_neurons * sizeof(nn_diffable_t)));
+    CHK_ALLOC(net->weights = (nn_diffable_t *) malloc(total_weights * sizeof(nn_diffable_t)));
+    CHK_ALLOC(net->biases  = (nn_diffable_t *) malloc(total_biases * sizeof(nn_diffable_t)));
+    // Note: Error signals have same exact dimensions as biases
+    CHK_ALLOC(net->error_signals = (nn_scalar_t *) malloc(total_biases * sizeof(nn_scalar_t)));
+    
+    CHK_READ(net->neurons, sizeof(net->neurons[0]), total_neurons, fp);
+    CHK_READ(net->weights, sizeof(net->weights[0]), total_weights, fp);
+    CHK_READ(net->biases, sizeof(net->biases[0]), total_biases, fp);
+    CHK_READ(net->error_signals, sizeof(net->error_signals[0]), total_biases, fp);
+    
+    // Set initialization flag of network
+    net->is_initialized = 1;
     
     fclose(fp);
     return NN_E_OK;
 }
 
-void nn_free(nn_arch *net)
+int nn_free(nn_arch *net)
 {
+    if (!net || !net->is_initialized)
+        return NN_E_NET_UNINITIALIZED;
+        
     net->n_hidden_layers = 0;
+    net->is_initialized  = 0;
     
     NN_FREE_NULL(net->neurons);
     NN_FREE_NULL(net->offsets_neurons);
@@ -387,6 +548,8 @@ void nn_free(nn_arch *net)
     NN_FREE_NULL(net->offsets_weights);
     NN_FREE_NULL(net->offsets_biases);
     NN_FREE_NULL(net->activations);
+    
+    return NN_E_OK;
 }
 
 #endif /* NEURAL_NET_H */
