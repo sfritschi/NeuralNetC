@@ -1,5 +1,5 @@
-#ifndef ACTIVATION_H
-#define ACTIVATION_H
+#ifndef NN_ACTIVATION_H
+#define NN_ACTIVATION_H
 
 #include <math.h>
 #include <neuralnetc/common.h>
@@ -62,4 +62,4 @@ static const nn_activation NN_ACTIVATIONS[] = {
   {NN_ACTIVATION_TANH, &nn_tanh_func, &nn_tanh_grad}  
 };
 
-#endif /* ACTIVATION_H */
+#endif /* NN_ACTIVATION_H */

@@ -1,9 +1,15 @@
 #include <stdio.h>
 #include <neuralnetc/neuralnet.h>
+#include <neuralnetc/random_init.h>
 
 int main(void)
 {
-    nn_arch net = nn_init_empty();
+    pcg32 gen = pcg32_init();
+    pcg32_seed(&gen, 24U);
+    
+    const nn_scalar_t f = normal_scalar(&gen, 0.0, 2.0);
+    printf("random: %.6f\n", f);
+    //nn_arch net = nn_init_empty();
     
     /* Intermediate network */
     /*
@@ -55,6 +61,8 @@ int main(void)
         return -1;
     }
     */
+    
+    /*
     if (nn_read(&net, "network.dat") != NN_E_OK) {
         fprintf(stderr, "Failed to read network from file\n");
         nn_free(&net);
@@ -70,6 +78,6 @@ int main(void)
     }
     
     nn_free(&net);
-
+    */
     return 0;
 }

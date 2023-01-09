@@ -1,5 +1,5 @@
-#ifndef COMMON_H
-#define COMMON_H
+#ifndef NN_COMMON_H
+#define NN_COMMON_H
 
 #include <stdbool.h>
 #include <endian.h>
@@ -33,4 +33,4 @@ enum nn_errors {
     ptr = NULL;\
 } while(0)
 
-#endif /* COMMON_H */
+#endif /* NN_COMMON_H */
