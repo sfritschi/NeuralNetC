@@ -5,10 +5,24 @@
 int main(void)
 {
     pcg32 gen = pcg32_init();
-    pcg32_seed(&gen, 24U);
+    pcg32_seed(&gen, 21U);
     
-    const nn_scalar_t f = normal_scalar(&gen, 0.0, 2.0);
-    printf("random: %.6f\n", f);
+    nn_scalar_t mean, stddev;
+    nn_scalar_t sum    = 0.0;
+    nn_scalar_t sum_sq = 0.0;
+    
+    uint32_t i, N = 1000000;
+    for (i = 0; i < N; ++i) {
+        nn_scalar_t f = random_normal_scalar(&gen, 1.0, 2.0);
+        
+        sum += f;
+        sum_sq += f*f;
+    }
+    mean = sum / (nn_scalar_t)N;
+    stddev = sqrtf((sum_sq - sum*sum / (nn_scalar_t)N) / (nn_scalar_t)(N - 1));
+    
+    printf("Mean    = %.6f\n", mean);
+    printf("Stddev. = %.6f\n", stddev);
     //nn_arch net = nn_init_empty();
     
     /* Intermediate network */

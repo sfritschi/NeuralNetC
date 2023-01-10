@@ -27,7 +27,7 @@ typedef struct {
 
 static nn_scalar_t nn_sigmoid_func(nn_scalar_t x)
 {
-    return (nn_scalar_t)1.0 / ((nn_scalar_t)1.0 + exp(-x));
+    return (nn_scalar_t)1.0 / ((nn_scalar_t)1.0 + expf(-x));
 }
 
 static nn_scalar_t nn_sigmoid_grad(nn_scalar_t a)
@@ -37,7 +37,7 @@ static nn_scalar_t nn_sigmoid_grad(nn_scalar_t a)
 
 static nn_scalar_t nn_ReLU_func(nn_scalar_t x)
 {
-    return fmax((nn_scalar_t)0.0, x);
+    return fmaxf((nn_scalar_t)0.0, x);
 }
 
 static nn_scalar_t nn_ReLU_grad(nn_scalar_t a)
@@ -47,7 +47,7 @@ static nn_scalar_t nn_ReLU_grad(nn_scalar_t a)
 
 static nn_scalar_t nn_tanh_func(nn_scalar_t x)
 {
-    return tanh(x);    
+    return tanhf(x);    
 }
 
 static nn_scalar_t nn_tanh_grad(nn_scalar_t a)
