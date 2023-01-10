@@ -8,6 +8,7 @@
 
 #include <neuralnetc/common.h>
 #include <neuralnetc/activation.h>
+#include <neuralnetc/random_init.h>
 
 #define CHK_WRITE(buf, size, nmemb, fp) do {\
     if (fwrite((buf), (size), (nmemb), (fp)) != (nmemb)) {\
@@ -65,11 +66,15 @@ typedef struct {
     uint8_t is_initialized;
 } nn_arch;
 
-static void nn_init_params(nn_arch *net)
+static void nn_init_params(nn_arch *net, uint64_t seed)
 {
-    // TODO: Initialize weights and biases randomly based on activation function
-    //       using PCG32 random number generator
     uint32_t i, l, on_prev, on_next, ow_prev, ow_next, ob_prev, ob_next;
+    uint32_t n_in, n_out;
+    nn_scalar_t stddev;
+    
+    pcg32 gen = pcg32_init();
+    pcg32_seed(&gen, seed);
+    
     for (l = 0; l < net->n_hidden_layers + 1; ++l) {
         on_prev = net->offsets_neurons[l];
         on_next = net->offsets_neurons[l+1];
@@ -78,12 +83,21 @@ static void nn_init_params(nn_arch *net)
         ob_prev = net->offsets_biases[l];
         ob_next = net->offsets_biases[l+1];
 
+        n_in  = net->n_neurons[l];
+        n_out = net->n_neurons[l+1];
+        
+        // Glorot (random) weight-initialization standard deviation (tanh)
+        stddev = sqrtf((nn_scalar_t)2.0 / (nn_scalar_t)(n_in + n_out));
+        
         for (i = ow_prev; i < ow_next; ++i) {
-            net->weights[i] = (nn_diffable_t) {1.0, 0.0};
+            net->weights[i] = (nn_diffable_t) {
+                random_normal_scalar(&gen, 0.0, stddev),
+                0.0
+            };
         }
-
+        // Initialize all biases to 0
         for (i = ob_prev; i < ob_next; ++i) {
-            net->biases[i] = (nn_diffable_t) {1.0, 0.0};
+            net->biases[i] = (nn_diffable_t) {0.0, 0.0};
             net->error_signals[i] = (nn_scalar_t) 0.0;
         }
         
@@ -106,7 +120,8 @@ nn_arch nn_init_empty() {
 }
 
 int nn_init(nn_arch *net, const uint32_t *n_neurons, 
-            const enum nn_activation_type *activations, uint32_t n_layers)
+            const enum nn_activation_type *activations, uint32_t n_layers,
+            uint64_t seed)
 {
     if (!net || net->is_initialized)
         return NN_E_NET_ALREADY_INITIALIZED;
@@ -134,6 +149,7 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
     net->offsets_weights[0] = 0;
     net->offsets_biases[0]  = 0;
 
+    // TODO: Check if #neurons in ANY layer == 0 -> error
     uint32_t l;
     for (l = 0; l < n_layers-1; ++l) {
         const uint32_t neurons_prev = n_neurons[l];
@@ -163,7 +179,7 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
     // Note: Error signals have same exact dimensions as biases
     CHK_ALLOC(net->error_signals = (nn_scalar_t *) malloc(total_biases * sizeof(nn_scalar_t)));
 
-    nn_init_params(net);
+    nn_init_params(net, seed);
     
     // Set initialization flag
     net->is_initialized = 1;

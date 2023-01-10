@@ -10,8 +10,8 @@
 #undef M_PI
 
 #define M_PI           3.14159265358979323846f
-#define INV_SQRT_TWO   0.70710678118654752440f
-#define INV_SQRT_TWOPI 0.39894228040143267794f
+//#define INV_SQRT_TWO   0.70710678118654752440f
+//#define INV_SQRT_TWOPI 0.39894228040143267794f
 
 nn_scalar_t random_uniform_scalar(pcg32 *gen, nn_scalar_t a, nn_scalar_t b)
 {
