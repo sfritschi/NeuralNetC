@@ -66,8 +66,8 @@ int main(void)
     // Compute forward pass
     nn_forward(&net, x);
     
-    printf("\n-- Forward Pass --\n");
-    nn_print(&net);
+    //printf("\n-- Forward Pass --\n");
+    //nn_print(&net);
     
     const nn_scalar_t y[] = {0.5, 1.0};
     nn_backward(&net, y);
