@@ -14,8 +14,7 @@ class NetworkArch(nn.Module):
         
         # Verify that network is valid
         if (nLayers < 2 or len(nNeurons) != nLayers or len(activations) != nLayers - 1 \
-            or not all(map(lambda x: x >= 2, nNeurons[1:-1])) or \
-            nNeurons[0] < 1 or nNeurons[-1] < 1):
+            or not all(map(lambda x: x >= 1, nNeurons))):
             
             raise ValueError("Invalid arguments encountered")
             
@@ -37,8 +36,9 @@ if __name__ == '__main__':
     
     if len(sys.argv) < 2:
         print("Usage: parse.py <network.nnc>")
+        exit(-1)
     
-    # TODO: Put parsing of file network file in constructor
+    # TODO: Put parsing of network file in constructor
     with open(sys.argv[1], "rb") as f:
         # Read binary little-endian data
         buf = f.read(3)
@@ -88,6 +88,7 @@ if __name__ == '__main__':
         
         #x = torch.zeros(6)
         #print(net(x))
+        # Extract weights and biases (skipping over gradient fields)
         wt = torch.tensor([weights[i] for i in range(0, len(weights), 2)])
         bt = torch.tensor([biases[i] for i in range(0, len(biases), 2)])
         # Offsets for weights and biases
@@ -123,7 +124,7 @@ if __name__ == '__main__':
         loss = ((y - y_pred)**2).sum()
         loss.backward()
         
-        # Print gradients of network
+        # Print computed gradients of network
         print("Gradients:")
         for i, layer in enumerate(net.layers):
             print(f"Layer #{i+1}")
