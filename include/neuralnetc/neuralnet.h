@@ -72,6 +72,7 @@ static void nn_init_params(nn_arch *net, uint64_t seed)
     uint32_t n_in, n_out;
     nn_scalar_t stddev;
     
+    // ?TODO: Determine if random number generator should be global
     pcg32 gen = pcg32_init();
     pcg32_seed(&gen, seed);
     
@@ -144,17 +145,19 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
     uint32_t total_weights = 0;
     uint32_t total_biases  = 0;
 
-    // Initialize offsets to 0
+    // Initialize start offsets to 0
     net->offsets_neurons[0] = 0;
     net->offsets_weights[0] = 0;
     net->offsets_biases[0]  = 0;
 
-    // TODO: Check if #neurons in ANY layer == 0 -> error
     uint32_t l;
     for (l = 0; l < n_layers-1; ++l) {
         const uint32_t neurons_prev = n_neurons[l];
         const uint32_t neurons_next = n_neurons[l+1];
  
+        if (neurons_prev < 1 || neurons_next < 1) {
+            return NN_E_TOO_FEW_NEURONS;
+        }
         // Initialize number of neurons and activation functions per layer
         net->activations[l] = NN_ACTIVATIONS[activations[l]];
         net->n_neurons[l] = neurons_prev;
@@ -264,11 +267,11 @@ int nn_backward(nn_arch *net, const nn_scalar_t *y_label)
         net->error_signals[i + ob] = error_signal;
         
         for (j = 0; j < cols; ++j) {
-            // grad(w)_ij,L = del_L,i * f_L-1,j
+            // grad(w)_ij,L = del_i,L * f_j,L-1
             net->weights[i*cols + j + ow].grad = error_signal * 
                 net->neurons[j + on].value;
         }
-        // grad(b)_i,L = del_L,i
+        // grad(b)_i,L = del_i,L
         net->biases[i + ob].grad = error_signal;
     }
 
@@ -292,22 +295,22 @@ int nn_backward(nn_arch *net, const nn_scalar_t *y_label)
             
             // Compute current error signal using last visited layer
             for (k = 0; k < rows_next; ++k) {
-                // del_l,i += del_l+1,k * w_ki,l+1
+                // del_i,l += del_k,l+1 * w_ki,l+1
                 error_signal += net->error_signals[k + ob_next] * 
                     net->weights[k*rows + i + ow_next].value;
             }
-            // del_l,i = del_l,i * grad(f)_l,i
+            // del_l,i = del_i,l * grad(f)_i,l
             error_signal *= net->neurons[i + on_next].grad;
             // NOTE: No need to store error signals for ALL layers.
             //       Only required for previous layer
             net->error_signals[i + ob] = error_signal;
             
             for (j = 0; j < cols; ++j) {
-                // grad(w)_ij,l = del_l,i * f_l-1,j
+                // grad(w)_ij,l = del_i,l * f_j,l-1
                 net->weights[i*cols + j + ow].grad = error_signal * 
                     net->neurons[j + on].value;
             }
-            // grad(b)_i,l = del_l,i
+            // grad(b)_i,l = del_i,l
             net->biases[i + ob].grad = error_signal;
         }
         
@@ -455,7 +458,7 @@ int nn_write(const nn_arch *net, const char *filename)
 }
 
 /*
- *  Reads network from given file to 
+ *  Reads network from given file
  */
 int nn_read(nn_arch *net, const char *filename)
 {
