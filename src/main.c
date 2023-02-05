@@ -75,7 +75,8 @@ int main(void)
     printf("\n-- Backward Pass --\n");
     nn_print(&net);
     
-    if (nn_write(&net, "net_final.nnc") != NN_E_OK) {
+    // Write network after backward pass to file
+    if (nn_write(&net, "net_backward.nnc") != NN_E_OK) {
         fprintf(stderr, "Failed to write network to file\n");
         nn_free(&net);
         return -1;
