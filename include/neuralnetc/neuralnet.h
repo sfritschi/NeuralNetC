@@ -8,6 +8,7 @@
 
 #include <neuralnetc/common.h>
 #include <neuralnetc/activation.h>
+#include <neuralnetc/loss_fn.h>
 #include <neuralnetc/random_init.h>
 
 #define CHK_WRITE(buf, size, nmemb, fp) do {\
@@ -66,11 +67,12 @@ typedef struct {
     uint8_t is_initialized;
 } nn_arch;
 
-static void nn_init_params(nn_arch *net, uint64_t seed)
+static int nn_init_params(nn_arch *net, enum nn_param_init_type param_type,
+                          uint64_t seed)
 {
     uint32_t i, l, on_prev, on_next, ow_prev, ow_next, ob_prev, ob_next;
     uint32_t n_in, n_out;
-    nn_scalar_t stddev;
+    nn_scalar_t param_dist, random_weight, random_bias;
     
     // ?TODO: Determine if random number generator should be global
     pcg32 gen = pcg32_init();
@@ -87,18 +89,44 @@ static void nn_init_params(nn_arch *net, uint64_t seed)
         n_in  = net->n_neurons[l];
         n_out = net->n_neurons[l+1];
         
-        // Glorot (random) weight-initialization standard deviation (tanh)
-        stddev = sqrtf((nn_scalar_t)2.0 / (nn_scalar_t)(n_in + n_out));
+        // Set random distribution parameter based on initialization
+        switch (param_type) {
+            case NN_PARAM_INIT_PYTORCH:
+                param_dist = sqrtf((nn_scalar_t)1.0 / (nn_scalar_t)n_in);
+                break;
+            
+            case NN_PARAM_INIT_GLOROT:
+                param_dist = sqrtf((nn_scalar_t)2.0 / (nn_scalar_t)(n_in + n_out));
+                break;
+            
+            default:
+                return NN_E_UNRECOGNIZED_ENUM_VALUE;
+        }
         
         for (i = ow_prev; i < ow_next; ++i) {
-            net->weights[i] = (nn_diffable_t) {
-                random_normal_scalar(&gen, 0.0, stddev),
-                0.0
-            };
+            switch (param_type) {
+                case NN_PARAM_INIT_PYTORCH:
+                    random_weight = random_uniform_scalar(&gen, -param_dist, param_dist);
+                    break;
+                
+                default:
+                    random_weight = random_normal_scalar(&gen, 0.0, param_dist);
+            }
+            
+            net->weights[i] = (nn_diffable_t) {random_weight, 0.0};
         }
-        // Initialize all biases to 0
+        // Initialize all biases
         for (i = ob_prev; i < ob_next; ++i) {
-            net->biases[i] = (nn_diffable_t) {0.0, 0.0};
+            switch (param_type) {
+                case NN_PARAM_INIT_PYTORCH:
+                    random_bias = random_uniform_scalar(&gen, -param_dist, param_dist);
+                    break;
+                
+                default:
+                    random_bias = (nn_scalar_t)0.0;
+            }
+            
+            net->biases[i] = (nn_diffable_t) {random_bias, 0.0};
             net->error_signals[i] = (nn_scalar_t) 0.0;
         }
         
@@ -107,12 +135,14 @@ static void nn_init_params(nn_arch *net, uint64_t seed)
         }
     }
     
-    // Set neurons of output layer
+    // Set neurons of output layer to 0
     on_prev = net->offsets_neurons[l];
     on_next = net->offsets_neurons[l+1];
     for (i = on_prev; i < on_next; ++i) {
         net->neurons[i] = (nn_diffable_t) {0.0, 0.0};
     }
+    
+    return NN_E_OK;
 }
 
 // Return empty network
@@ -122,7 +152,7 @@ nn_arch nn_init_empty() {
 
 int nn_init(nn_arch *net, const uint32_t *n_neurons, 
             const enum nn_activation_type *activations, uint32_t n_layers,
-            uint64_t seed)
+            enum nn_param_init_type param_type, uint64_t seed)
 {
     if (!net || net->is_initialized)
         return NN_E_NET_ALREADY_INITIALIZED;
@@ -182,12 +212,12 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
     // Note: Error signals have same exact dimensions as biases
     CHK_ALLOC(net->error_signals = (nn_scalar_t *) malloc(total_biases * sizeof(nn_scalar_t)));
 
-    nn_init_params(net, seed);
+    const enum nn_errors err = nn_init_params(net, param_type, seed);
     
     // Set initialization flag
-    net->is_initialized = 1;
+    if (err == NN_E_OK) net->is_initialized = 1;
     
-    return NN_E_OK;
+    return err;
 }
 
 // Compute forward pass to evaluate neural network architecture
@@ -242,11 +272,15 @@ int nn_forward(nn_arch *net, const nn_scalar_t *x)
     return NN_E_OK;
 }
 
-int nn_backward(nn_arch *net, const nn_scalar_t *y_label)
+int nn_backward(nn_arch *net, const nn_scalar_t *y_label, 
+                enum nn_loss_fn_type loss_type)
 {
     if (!net || !net->is_initialized)
         return NN_E_NET_UNINITIALIZED;
-        
+    
+    // ?TODO: Bounds check for loss_type 
+    const nn_loss_funcptr_t loss_grad = NN_LOSS_FN[loss_type].gradl;
+    
     uint32_t i, j, k, l, on_next, on, ow_next, ow, ob_next, ob, rows, rows_next, cols;
     // Compute error signal at final layer
     on_next = net->offsets_neurons[net->n_hidden_layers+1];
@@ -259,11 +293,9 @@ int nn_backward(nn_arch *net, const nn_scalar_t *y_label)
     nn_scalar_t error_signal;
     
     for (i = 0; i < rows; ++i) {
-        // Note: Implicitly assumes squared error loss
-        // TODO: Add loss function structure to nn_arch
         const nn_diffable_t neuron = net->neurons[i + on_next];
         // del_L,i
-        error_signal = (nn_scalar_t)2.0 * (neuron.value - y_label[i]) * neuron.grad;
+        error_signal = loss_grad(neuron.value, y_label[i]) * neuron.grad;
         net->error_signals[i + ob] = error_signal;
         
         for (j = 0; j < cols; ++j) {

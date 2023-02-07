@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <neuralnetc/neuralnet.h>
+#include <neuralnetc/optim.h>
 #include <neuralnetc/random_init.h>
 
 int main(void)
@@ -30,7 +31,7 @@ int main(void)
     
     /* Intermediate network */
     const uint32_t n_layers = 6;
-    const uint32_t n_neurons[] = {6, 3, 4, 7, 5, 2};
+    const uint32_t n_neurons[] = {6, 128, 128, 64, 32, 2};
     const enum nn_activation_type activations[] = {
         NN_ACTIVATION_TANH, 
         NN_ACTIVATION_RELU, 
@@ -48,7 +49,7 @@ int main(void)
     //const uint32_t n_neurons[] = {1, 1};
     //const nn_activation activations[] = {nn_identity};
 
-    if (nn_init(&net, n_neurons, activations, n_layers, init_seed) != NN_E_OK) {
+    if (nn_init(&net, n_neurons, activations, n_layers, NN_PARAM_INIT_PYTORCH, init_seed) != NN_E_OK) {
         fprintf(stderr, "Failed to initialize neural network\n");
         nn_free(&net);
         return -1;
@@ -70,10 +71,10 @@ int main(void)
     //nn_print(&net);
     
     const nn_scalar_t y[] = {0.5, 1.0};
-    nn_backward(&net, y);
+    nn_backward(&net, y, NN_LOSS_SQUARED_ERROR);
     
-    printf("\n-- Backward Pass --\n");
-    nn_print(&net);
+    //printf("\n-- Backward Pass --\n");
+    //nn_print(&net);
     
     // Write network after backward pass to file
     if (nn_write(&net, "net_backward.nnc") != NN_E_OK) {
