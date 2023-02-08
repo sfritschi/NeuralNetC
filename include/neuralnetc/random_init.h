@@ -15,12 +15,12 @@ enum nn_param_init_type {
     NN_PARAM_INIT_GLOROT    
 };
 
-nn_scalar_t random_uniform_scalar(pcg32 *gen, nn_scalar_t a, nn_scalar_t b)
+nn_scalar_t random_uniform_scalar(pcg32 *gen, nn_scalar_t low, nn_scalar_t high)
 {
-    assert(a <= b && "Require a <= b!");
+    assert(low <= high && "Require low <= high!");
     
     const nn_scalar_t u = pcg32_next_scalar(gen);
-    return (b - a) * u + a;
+    return (high - low) * u + low;
 }
 
 // Use Box-Muller transform to find two independent samples of normal distribution

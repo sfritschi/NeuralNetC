@@ -20,6 +20,8 @@ typedef struct {
     nn_scalar_t *labels;  // (optional) per sample label
     uint32_t n_samples;
     uint32_t sample_dim;
+    uint32_t label_dim;
+    uint32_t n_batches;
     uint32_t batch_size;
     // buffers to store parameters of (optional) normalization
     nn_scalar_t *__normalize_bufferA; 
@@ -28,19 +30,16 @@ typedef struct {
     enum nn_dataset_norm_type normalization; 
 } nn_dataset;
 
-int nn_dataset_init(nn_dataset *dataset, uint32_t n_samples, 
-                    uint32_t sample_dim, uint32_t batch_size, bool labelled)
+int nn_dataset_init_unlabelled(nn_dataset *dataset, uint32_t n_samples, 
+                               uint32_t sample_dim, uint32_t batch_size)
 {
     assert(dataset && "Expected non-NULL dataset");
     
-    if (n_samples < 1 || sample_dim < 1 || batch_size < 1)
+    if (n_samples < 1 || sample_dim < 1 || batch_size < 1 || n_samples < batch_size)
         return NN_E_DATASET_INVALID;
     
     CHK_ALLOC(dataset->data = (nn_scalar_t *) malloc(n_samples * sample_dim * sizeof(nn_scalar_t)));
-    if (labelled)
-        CHK_ALLOC(dataset->labels = (nn_scalar_t *) malloc(n_samples * sizeof(nn_scalar_t)));
-    else
-        dataset->labels = NULL;
+    dataset->labels = NULL;
     
     // set normalization buffers to NULL initially
     dataset->__normalize_bufferA = NULL;
@@ -49,9 +48,51 @@ int nn_dataset_init(nn_dataset *dataset, uint32_t n_samples,
     
     dataset->n_samples  = n_samples;
     dataset->sample_dim = sample_dim;
-    dataset->batch_size = batch_size;
+    dataset->label_dim  = 0;
+    dataset->n_batches  = n_samples / batch_size;
+    // Handle special case where there is only 1 batch -> identical to
+    // the case of batch_size == 1
+    if (dataset->n_batches > 1)
+        dataset->batch_size = batch_size;
+    else
+        dataset->batch_size = 1;
     
-    dataset->__uneven_load_thresh = n_samples - (n_samples % batch_size);
+    dataset->__uneven_load_thresh = dataset->n_batches - 
+        (dataset->n_samples % dataset->n_batches);
+    
+    return NN_E_OK;
+}
+
+int nn_dataset_init_labelled(nn_dataset *dataset, uint32_t n_samples, 
+                             uint32_t sample_dim, uint32_t batch_size, 
+                             uint32_t label_dim)
+{
+    assert(dataset && "Expected non-NULL dataset");
+    
+    if (n_samples < 1 || sample_dim < 1 || label_dim < 1 || batch_size < 1 || n_samples < batch_size)
+        return NN_E_DATASET_INVALID;
+    
+    CHK_ALLOC(dataset->data = (nn_scalar_t *) malloc(n_samples * sample_dim * sizeof(nn_scalar_t)));
+    CHK_ALLOC(dataset->labels = (nn_scalar_t *) malloc(n_samples * label_dim * sizeof(nn_scalar_t)));
+    
+    // set normalization buffers to NULL initially
+    dataset->__normalize_bufferA = NULL;
+    dataset->__normalize_bufferB = NULL;
+    dataset->normalization = NN_DATASET_UNNORMALIZED;
+    
+    dataset->n_samples  = n_samples;
+    dataset->sample_dim = sample_dim;
+    dataset->label_dim  = label_dim;
+    dataset->n_batches  = n_samples / batch_size;
+    // Handle special case where there is only 1 batch -> identical to
+    // the case of batch_size == 1
+    if (dataset->n_batches > 1)
+        dataset->batch_size = batch_size;
+    else
+        dataset->batch_size = 1;
+    
+    dataset->__uneven_load_thresh = dataset->n_batches - 
+        (dataset->n_samples % dataset->n_batches);
     
     return NN_E_OK;
 }
@@ -62,6 +103,9 @@ uint32_t nn_dataset_local_batch_size(const nn_dataset *dataset, uint32_t batch_i
     
     if (dataset->batch_size == 1)
         return dataset->n_samples;
+    
+    // TODO: This does not work for certain batch sizes -> adjust batch
+    //       size in those cases
     
     // Batches with indices above threshold effectively contain 1 more sample,
     // to account for the case where #samples is not evenly divisible by batch size
@@ -177,7 +221,7 @@ int nn_dataset_standardize(nn_dataset *dataset, bool transform_only)
         // Post-processing; Set bufferA to mean and bufferB to stddev
         for (j = 0; j < dataset->sample_dim; ++j) {
             const nn_scalar_t mean = dataset->__normalize_bufferA[j] / N;
-            dataset->__normalize_bufferA[j] = mean; 
+            dataset->__normalize_bufferA[j] = mean;
             dataset->__normalize_bufferB[j] = sqrtf(dataset->__normalize_bufferB[j] / N - mean*mean);
             
             if (fabsf(dataset->__normalize_bufferB[j]) < Epsilon) {
@@ -275,17 +319,48 @@ int nn_dataset_transfer_normalization(const nn_dataset *from, nn_dataset *to)
     return err;
 }
 
-void nn_dataset_print(const nn_dataset *dataset)
+// DEBUG
+void nn_dataset_fill_random(pcg32 *gen, nn_dataset *dataset, nn_scalar_t low, nn_scalar_t high)
 {
     assert(dataset && "Expected non-NULL dataset");
     
     for (uint32_t i = 0; i < dataset->n_samples; ++i) {
         for (uint32_t j = 0; j < dataset->sample_dim; ++j) {
+            const nn_scalar_t random = random_uniform_scalar(gen, low, high);
+            dataset->data[FLATTEN(i, j, dataset->sample_dim)] = random;
+        }
+    }
+}
+
+void nn_dataset_fill_continuous(nn_dataset *dataset)
+{
+    assert(dataset && "Expected non-NULL dataset");
+    
+    for (uint32_t i = 0; i < dataset->n_samples; ++i) {
+        for (uint32_t j = 0; j < dataset->sample_dim; ++j) {
+            const uint32_t index = FLATTEN(i, j, dataset->sample_dim);
+            dataset->data[index] = (nn_scalar_t)index;
+        }
+    }
+}
+
+void nn_dataset_print(const nn_dataset *dataset)
+{
+    assert(dataset && "Expected non-NULL dataset");
+    
+    uint32_t i, j;
+    for (i = 0; i < dataset->n_samples; ++i) {
+        for (j = 0; j < dataset->sample_dim; ++j) {
             printf("%.8f ", dataset->data[FLATTEN(i, j, dataset->sample_dim)]);
         }
         
-        if (dataset->labels)
-            printf("\ty = %.8f\n", dataset->labels[i]);
+        if (dataset->labels) {
+            printf("\ty = ");
+            for (j = 0; j < dataset->label_dim; ++j) {
+                printf("%.8f ", dataset->labels[FLATTEN(i, j, dataset->label_dim)]);
+            }
+        }
+        printf("\n");
     }
 }
 
@@ -311,8 +386,11 @@ int nn_dataset_free(nn_dataset *dataset)
     
     dataset->n_samples  = 0;
     dataset->sample_dim = 0;
+    dataset->label_dim  = 0;
+    dataset->n_batches  = 0;
     dataset->batch_size = 0;
     
+    dataset->normalization = NN_DATASET_UNNORMALIZED;
     dataset->__uneven_load_thresh = 0;
     
     return NN_E_OK;
