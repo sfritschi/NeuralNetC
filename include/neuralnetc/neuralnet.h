@@ -10,6 +10,7 @@
 #include <neuralnetc/activation.h>
 #include <neuralnetc/loss_fn.h>
 #include <neuralnetc/random_init.h>
+#include <neuralnetc/dataset.h>
 
 #define CHK_WRITE(buf, size, nmemb, fp) do {\
     if (fwrite((buf), (size), (nmemb), (fp)) != (nmemb)) {\

@@ -10,6 +10,8 @@ typedef nn_scalar_t (* nn_funcptr_t)(nn_scalar_t);
 static const char FILE_SIGNATURE[] = "NNC";
 // Subtract 1 due to null terminator
 #define SIGNATURE_LEN (sizeof(FILE_SIGNATURE) - 1)
+// Numerically precision for "close to 0" comparisons
+#define Epsilon 1e-8f
 
 enum nn_errors {
     NN_E_OK = 0,
@@ -21,7 +23,10 @@ enum nn_errors {
     NN_E_FAILED_TO_WRITE_FILE,
     NN_E_FAILED_TO_READ_FILE,
     NN_E_UNRECOGNIZED_READ_SIGNATURE,
-    NN_E_UNRECOGNIZED_ENUM_VALUE
+    NN_E_UNRECOGNIZED_ENUM_VALUE,
+    NN_E_DATASET_INVALID,
+    NN_E_DATASET_ALREADY_NORMALIZED,
+    NN_E_NUMERIC_TOO_SMALL
 };
 
 #define CHK_ALLOC(ptr) do {\

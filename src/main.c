@@ -5,6 +5,14 @@
 
 int main(void)
 {
+    nn_dataset train;
+    if (nn_dataset_init(&train, 23, 2, 5, true) != NN_E_OK) {
+        fprintf(stderr, "Failed to initialize dataset\n");
+        return -1;
+    }
+    
+    
+    nn_dataset_free(&train);
     /*
     pcg32 gen = pcg32_init();
     pcg32_seed(&gen, 21U);
