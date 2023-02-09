@@ -9,7 +9,7 @@ int main(void)
     pcg32_seed(&gen, 21U);
     
     nn_dataset train = {0};
-    if (nn_dataset_init_unlabelled(&train, 27, 2, 7) != NN_E_OK) {
+    if (nn_dataset_init_unlabelled(&train, 23, 2, 5) != NN_E_OK) {
         fprintf(stderr, "Failed to initialize dataset\n");
         nn_dataset_free(&train);
         return -1;

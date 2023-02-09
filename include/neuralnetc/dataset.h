@@ -26,8 +26,8 @@ typedef struct {
     // buffers to store parameters of (optional) normalization
     nn_scalar_t *__normalize_bufferA; 
     nn_scalar_t *__normalize_bufferB;
-    uint32_t __uneven_load_thresh;
-    enum nn_dataset_norm_type normalization; 
+    uint32_t __remainder;  // Keep track of remainder(n_samples, batch_size)
+    enum nn_dataset_norm_type normalization;
 } nn_dataset;
 
 int nn_dataset_init_unlabelled(nn_dataset *dataset, uint32_t n_samples, 
@@ -49,16 +49,11 @@ int nn_dataset_init_unlabelled(nn_dataset *dataset, uint32_t n_samples,
     dataset->n_samples  = n_samples;
     dataset->sample_dim = sample_dim;
     dataset->label_dim  = 0;
-    dataset->n_batches  = n_samples / batch_size;
-    // Handle special case where there is only 1 batch -> identical to
-    // the case of batch_size == 1
-    if (dataset->n_batches > 1)
-        dataset->batch_size = batch_size;
-    else
-        dataset->batch_size = 1;
-    
-    dataset->__uneven_load_thresh = dataset->n_batches - 
-        (dataset->n_samples % dataset->n_batches);
+    // Compute ceiling of #samples divided by batch_size
+    // NOTE: This could theoretically result in overflow of numerator
+    dataset->n_batches   = (n_samples + batch_size - 1) / batch_size;
+    dataset->__remainder = n_samples % batch_size;
+    dataset->batch_size  = batch_size;
     
     return NN_E_OK;
 }
@@ -83,34 +78,23 @@ int nn_dataset_init_labelled(nn_dataset *dataset, uint32_t n_samples,
     dataset->n_samples  = n_samples;
     dataset->sample_dim = sample_dim;
     dataset->label_dim  = label_dim;
-    dataset->n_batches  = n_samples / batch_size;
-    // Handle special case where there is only 1 batch -> identical to
-    // the case of batch_size == 1
-    if (dataset->n_batches > 1)
-        dataset->batch_size = batch_size;
-    else
-        dataset->batch_size = 1;
-    
-    dataset->__uneven_load_thresh = dataset->n_batches - 
-        (dataset->n_samples % dataset->n_batches);
+    // Compute ceiling of #samples divided by batch_size
+    // NOTE: This could theoretically result in overflow of numerator
+    dataset->n_batches   = (n_samples + batch_size - 1) / batch_size;
+    dataset->__remainder = n_samples % batch_size;
+    dataset->batch_size  = batch_size;
     
     return NN_E_OK;
 }
 
 uint32_t nn_dataset_local_batch_size(const nn_dataset *dataset, uint32_t batch_index)
 {
-    assert(dataset && "Expected non-NULL dataset");
+    assert(dataset && batch_index < dataset->n_batches && "Expected non-NULL dataset");
     
-    if (dataset->batch_size == 1)
-        return dataset->n_samples;
-    
-    // TODO: This does not work for certain batch sizes -> adjust batch
-    //       size in those cases
-    
-    // Batches with indices above threshold effectively contain 1 more sample,
-    // to account for the case where #samples is not evenly divisible by batch size
-    if (batch_index >= dataset->__uneven_load_thresh)
-        return dataset->batch_size + 1;
+    // Last batch contains remainder of samples if the total #samples
+    // is not evenly divisible by batch_size
+    if (dataset->__remainder != 0 && batch_index + 1 == dataset->n_batches)
+        return dataset->__remainder;
     else
         return dataset->batch_size;
 }
@@ -121,16 +105,19 @@ void nn_dataset_random_shuffle_samples(pcg32 *gen, nn_dataset *dataset)
     
     const uint32_t N = dataset->n_samples;
     const uint32_t d = dataset->sample_dim;
+    const uint32_t l = dataset->label_dim;
+    
     nn_scalar_t temp;
     // NOTE: Assumes n_samples >= 1, which is true if initialized properly
     // Fisher-Yates random shuffle algorithm
-    for (uint32_t i = 0; i < N - 1; ++i) {
+    uint32_t i, j, from, to;
+    for (i = 0; i < N - 1; ++i) {
         // Random index in range [i, N) 
         const uint32_t random_index = i + pcg32_next_uint_bound(gen, N - i);
         // Swap samples
-        for (uint32_t j = 0; j < d; ++j) {
-            const uint32_t from = FLATTEN(i, j, d);
-            const uint32_t to   = FLATTEN(random_index, j, d);
+        for (j = 0; j < d; ++j) {
+            from = FLATTEN(i, j, d);
+            to   = FLATTEN(random_index, j, d);
             
             temp                = dataset->data[to];
             dataset->data[to]   = dataset->data[from];
@@ -139,9 +126,14 @@ void nn_dataset_random_shuffle_samples(pcg32 *gen, nn_dataset *dataset)
         
         // Swap also associated labels if available
         if (dataset->labels) {
-            temp                          = dataset->labels[random_index];
-            dataset->labels[random_index] = dataset->labels[i];
-            dataset->labels[i]            = temp;
+            for (j = 0; j < l; ++j) {
+                from = FLATTEN(i, j, l);
+                to   = FLATTEN(random_index, j, l);
+                
+                temp                  = dataset->labels[to];
+                dataset->labels[to]   = dataset->labels[from];
+                dataset->labels[from] = temp;
+            }
         }
     }
 }
@@ -384,14 +376,14 @@ int nn_dataset_free(nn_dataset *dataset)
     NN_FREE_NULL(dataset->__normalize_bufferA);
     NN_FREE_NULL(dataset->__normalize_bufferB);
     
-    dataset->n_samples  = 0;
-    dataset->sample_dim = 0;
-    dataset->label_dim  = 0;
-    dataset->n_batches  = 0;
-    dataset->batch_size = 0;
+    dataset->n_samples   = 0;
+    dataset->sample_dim  = 0;
+    dataset->label_dim   = 0;
+    dataset->n_batches   = 0;
+    dataset->__remainder = 0;
+    dataset->batch_size  = 0;
     
     dataset->normalization = NN_DATASET_UNNORMALIZED;
-    dataset->__uneven_load_thresh = 0;
     
     return NN_E_OK;
 }
