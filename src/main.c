@@ -55,7 +55,7 @@ int main(void)
         return -1;
     }
     
-    const nn_scalar_t lr    = 1e-2;
+    const nn_scalar_t lr    = 1e-1;
     const uint32_t n_epochs = 100;
     for (i = 0; i < n_epochs; ++i) {
         // Re-shuffle dataset

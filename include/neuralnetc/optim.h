@@ -4,7 +4,7 @@
 #include <neuralnetc/neuralnet.h>
 
 int nn_optim_step_SGD(nn_arch *net, const nn_dataset *train, 
-                       nn_scalar_t learning_rate, enum nn_loss_fn_type loss_type)
+                      nn_scalar_t learning_rate, enum nn_loss_fn_type loss_type)
 {
     assert(net && train && "Expected non-NULL pointers");
     
@@ -23,17 +23,12 @@ int nn_optim_step_SGD(nn_arch *net, const nn_dataset *train,
     const uint32_t on_output = net->offsets_neurons[net->n_hidden_layers+1];
     
     uint32_t i, j, k, local_batch, start = 0;
-    // Set gradients to 0 first
-    for (i = 0; i < total_weights; ++i) {
-        net->weights[i].grad = 0.0;
-    }
-        
-    for (i = 0; i < total_biases; ++i) {
-        net->biases[i].grad = 0.0;
-    }
-    
     nn_scalar_t train_loss = 0.0;
     for (i = 0; i < train->n_batches; ++i) {
+        // Set gradients to 0
+        for (j = 0; j < total_weights; ++j) net->weights[j].grad = 0.0;
+        for (j = 0; j < total_biases; ++j)  net->biases[j].grad  = 0.0;
+        
         local_batch = nn_dataset_local_batch_size(train, i);
         
         // TODO: Account for different losses
