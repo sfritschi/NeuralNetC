@@ -68,16 +68,11 @@ typedef struct {
     uint8_t is_initialized;
 } nn_arch;
 
-static int nn_init_params(nn_arch *net, enum nn_param_init_type param_type,
-                          uint64_t seed)
+static int nn_init_params(pcg32 *gen, nn_arch *net, enum nn_param_init_type param_type)
 {
     uint32_t i, l, on_prev, on_next, ow_prev, ow_next, ob_prev, ob_next;
     uint32_t n_in, n_out;
     nn_scalar_t param_dist, random_weight, random_bias;
-    
-    // ?TODO: Determine if random number generator should be global
-    pcg32 gen = pcg32_init();
-    pcg32_seed(&gen, seed);
     
     for (l = 0; l < net->n_hidden_layers + 1; ++l) {
         on_prev = net->offsets_neurons[l];
@@ -107,11 +102,11 @@ static int nn_init_params(nn_arch *net, enum nn_param_init_type param_type,
         for (i = ow_prev; i < ow_next; ++i) {
             switch (param_type) {
                 case NN_PARAM_INIT_PYTORCH:
-                    random_weight = random_uniform_scalar(&gen, -param_dist, param_dist);
+                    random_weight = random_uniform_scalar(gen, -param_dist, param_dist);
                     break;
                 
                 default:
-                    random_weight = random_normal_scalar(&gen, 0.0, param_dist);
+                    random_weight = random_normal_scalar(gen, 0.0, param_dist);
             }
             
             net->weights[i] = (nn_diffable_t) {random_weight, 0.0};
@@ -120,7 +115,7 @@ static int nn_init_params(nn_arch *net, enum nn_param_init_type param_type,
         for (i = ob_prev; i < ob_next; ++i) {
             switch (param_type) {
                 case NN_PARAM_INIT_PYTORCH:
-                    random_bias = random_uniform_scalar(&gen, -param_dist, param_dist);
+                    random_bias = random_uniform_scalar(gen, -param_dist, param_dist);
                     break;
                 
                 default:
@@ -151,9 +146,9 @@ nn_arch nn_init_empty() {
     return (nn_arch) {0};
 }
 
-int nn_init(nn_arch *net, const uint32_t *n_neurons, 
+int nn_init(pcg32 *gen, nn_arch *net, const uint32_t *n_neurons, 
             const enum nn_activation_type *activations, uint32_t n_layers,
-            enum nn_param_init_type param_type, uint64_t seed)
+            enum nn_param_init_type param_type)
 {
     if (!net || net->is_initialized)
         return NN_E_NET_ALREADY_INITIALIZED;
@@ -213,7 +208,7 @@ int nn_init(nn_arch *net, const uint32_t *n_neurons,
     // Note: Error signals have same exact dimensions as biases
     CHK_ALLOC(net->error_signals = (nn_scalar_t *) malloc(total_biases * sizeof(nn_scalar_t)));
 
-    const enum nn_errors err = nn_init_params(net, param_type, seed);
+    const enum nn_errors err = nn_init_params(gen, net, param_type);
     
     // Set initialization flag
     if (err == NN_E_OK) net->is_initialized = 1;
@@ -301,11 +296,11 @@ int nn_backward(nn_arch *net, const nn_scalar_t *y_label,
         
         for (j = 0; j < cols; ++j) {
             // grad(w)_ij,L = del_i,L * f_j,L-1
-            net->weights[i*cols + j + ow].grad = error_signal * 
+            net->weights[i*cols + j + ow].grad += error_signal * 
                 net->neurons[j + on].value;
         }
         // grad(b)_i,L = del_i,L
-        net->biases[i + ob].grad = error_signal;
+        net->biases[i + ob].grad += error_signal;
     }
 
     if (net->n_hidden_layers == 0)
@@ -340,11 +335,11 @@ int nn_backward(nn_arch *net, const nn_scalar_t *y_label,
             
             for (j = 0; j < cols; ++j) {
                 // grad(w)_ij,l = del_i,l * f_j,l-1
-                net->weights[i*cols + j + ow].grad = error_signal * 
+                net->weights[i*cols + j + ow].grad += error_signal * 
                     net->neurons[j + on].value;
             }
             // grad(b)_i,l = del_i,l
-            net->biases[i + ob].grad = error_signal;
+            net->biases[i + ob].grad += error_signal;
         }
         
         // Reached first layer; done

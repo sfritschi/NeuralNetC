@@ -1,34 +1,71 @@
 #include <stdio.h>
+
 #include <neuralnetc/neuralnet.h>
 #include <neuralnetc/optim.h>
 #include <neuralnetc/random_init.h>
 
 int main(void)
 {
+    // Random number generator (with a given seed)
     pcg32 gen = pcg32_init();
     pcg32_seed(&gen, 21U);
     
+    // Create training set (sine function + Gaussian noise)
+    uint32_t i;
+    const uint32_t N = 256;
+    const uint32_t b = 16;
+    const nn_scalar_t two_pi = 2.0f * M_PI;
+    const nn_scalar_t stddev = 1e-2f;
+    
+    // Initialize training set (allocate + preprocessing)
     nn_dataset train = {0};
-    if (nn_dataset_init_unlabelled(&train, 23, 2, 5) != NN_E_OK) {
+    if (nn_dataset_init_labelled(&train, N, 1, b, 1) != NN_E_OK) {
         fprintf(stderr, "Failed to initialize dataset\n");
         nn_dataset_free(&train);
         return -1;
     }
     
-    nn_dataset_fill_random(&gen, &train, 1.0f, 3.0f);
+    // x \in [0, 2*\pi], y = sin(x) + N(0, \sigma^2)
+    for (i = 0; i < N; ++i) {
+        train.data[i]   = two_pi * (nn_scalar_t)i / (nn_scalar_t)(N - 1);
+        train.labels[i] = sinf(train.data[i]) + random_normal_scalar(&gen, 0.0, stddev);
+    }
     
+    
+    // Normalize training set
     if (nn_dataset_normalize(&train, NN_DATASET_NORMALIZED_MIN_MAX) != NN_E_OK) {
         fprintf(stderr, "Failed to normalize training set");
         nn_dataset_free(&train);
         return -1;
     }
     
-    //nn_dataset_print(&train);
+    // Initialize neural network
+    nn_arch net = {0};
+    const uint32_t n_layers = 4;  // 2 hidden layers
+    const uint32_t n_neurons[] = {1, 16, 16, 1};
+    const enum nn_activation_type activations[] = {
+        NN_ACTIVATION_TANH,
+        NN_ACTIVATION_TANH,
+        NN_ACTIVATION_TANH
+    };
     
-    for (uint32_t i = 0; i < train.n_batches; ++i) {
-        printf("Local batch size: %u\n", nn_dataset_local_batch_size(&train, i));
+    if (nn_init(&gen, &net, n_neurons, activations, n_layers, NN_PARAM_INIT_GLOROT) != NN_E_OK) {
+        fprintf(stderr, "Failed to initialize neural network\n");
+        nn_free(&net);
+        return -1;
     }
     
+    const nn_scalar_t lr    = 1e-2;
+    const uint32_t n_epochs = 100;
+    for (i = 0; i < n_epochs; ++i) {
+        // Re-shuffle dataset
+        nn_dataset_random_shuffle_samples(&gen, &train);
+        // Optimization step
+        nn_optim_step_SGD(&net, &train, lr, NN_LOSS_SQUARED_ERROR);
+    }
+    
+    // Cleanup
+    nn_free(&net);
     nn_dataset_free(&train);
     
     return 0;    
@@ -57,8 +94,10 @@ int main2(void)
     printf("Mean    = %.6f\n", mean);
     printf("Stddev. = %.6f\n", stddev);
     */
-    nn_arch net = nn_init_empty();
-    const uint64_t init_seed = 23U;
+    pcg32 gen = pcg32_init();
+    pcg32_seed(&gen, 21U);
+    
+    nn_arch net = {0};
     
     /* Intermediate network */
     const uint32_t n_layers = 6;
@@ -80,7 +119,7 @@ int main2(void)
     //const uint32_t n_neurons[] = {1, 1};
     //const nn_activation activations[] = {nn_identity};
 
-    if (nn_init(&net, n_neurons, activations, n_layers, NN_PARAM_INIT_PYTORCH, init_seed) != NN_E_OK) {
+    if (nn_init(&gen, &net, n_neurons, activations, n_layers, NN_PARAM_INIT_PYTORCH) != NN_E_OK) {
         fprintf(stderr, "Failed to initialize neural network\n");
         nn_free(&net);
         return -1;
