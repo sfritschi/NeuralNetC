@@ -15,11 +15,11 @@ int nn_optim_step_SGD(nn_arch *net, const nn_dataset *train,
         net->n_neurons[net->n_hidden_layers+1] != train->label_dim)
         return NN_E_INVALID_DIMENSIONS;
     
-    const nn_loss_funcptr_t loss_fn   = NN_LOSS_FN[loss_type].l;
+    const nn_loss_funcptr_t loss_fn = NN_LOSS_FN[loss_type].l;
     
-    // Offset of neurons in output layer
     const uint32_t total_weights = net->offsets_weights[net->n_hidden_layers+1];
     const uint32_t total_biases  = net->offsets_biases[net->n_hidden_layers+1];
+    // Offset of neurons in output layer
     const uint32_t on_output = net->offsets_neurons[net->n_hidden_layers+1];
     
     uint32_t i, j, k, local_batch, start = 0;
@@ -63,8 +63,9 @@ int nn_optim_step_SGD(nn_arch *net, const nn_dataset *train,
         start += local_batch;
     }
     train_loss /= (nn_scalar_t)train->n_batches;
-    printf("Average Training Loss: %.8e\n", train_loss);
+    //printf("Average Training Loss: %.8e\n", train_loss);
     
     return NN_E_OK;
 }
+
 #endif /* NN_OPTIM_H */

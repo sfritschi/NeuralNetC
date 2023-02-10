@@ -367,6 +367,32 @@ int nn_dataset_read(nn_dataset *dataset, const char *filename)
     return NN_E_OK;
 }
 
+int nn_dataset_write(const nn_dataset *dataset, const char *filename)
+{
+    assert(dataset && "Expected non-NULL dataset");
+    
+    FILE *fp = fopen(filename, "w");
+    if (!fp) return NN_E_FAILED_TO_WRITE_FILE;
+    
+    // Note: Labels (if any) are written in last columns
+    uint32_t i, j;
+    for (i = 0; i < dataset->n_samples; ++i) {
+        for (j = 0; j < dataset->sample_dim; ++j) {
+            fprintf(fp, "%.8f ", dataset->data[FLATTEN(i, j, dataset->sample_dim)]);
+        }
+        
+        if (dataset->labels) {
+            for (j = 0; j < dataset->label_dim; ++j) {
+                fprintf(fp, "%.8f ", dataset->labels[FLATTEN(i, j, dataset->label_dim)]);
+            }
+        }
+        fprintf(fp, "\n");
+    }
+    
+    fclose(fp);
+    return NN_E_OK;
+}
+
 int nn_dataset_free(nn_dataset *dataset)
 {
     assert(dataset && "Expected non-NULL dataset");

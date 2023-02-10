@@ -349,6 +349,46 @@ int nn_backward(nn_arch *net, const nn_scalar_t *y_label,
     return NN_E_OK;
 }
 
+int nn_predict(nn_arch *net, nn_dataset *test)
+{
+    assert(net && test && "Expected non-NULL pointers");
+    
+    if (test->labels != NULL)
+        return NN_E_DATASET_TEST_LABELLED;
+    
+    if (net->n_neurons[0] != test->sample_dim)
+        return NN_E_INVALID_DIMENSIONS;
+    
+    test->label_dim = net->n_neurons[net->n_hidden_layers+1];
+    // Allocate labels
+    CHK_ALLOC(test->labels = (nn_scalar_t *) malloc(test->n_samples * test->label_dim * sizeof(nn_scalar_t)));
+    
+    // Offset of neurons in output layer
+    const uint32_t on_output = net->offsets_neurons[net->n_hidden_layers+1];
+    
+    uint32_t i, j, k, local_batch, start = 0;
+    for (i = 0; i < test->n_batches; ++i) {
+        local_batch = nn_dataset_local_batch_size(test, i);
+        
+        // Compute (average) batch loss
+        for (j = 0; j < local_batch; ++j) {
+            const nn_scalar_t *sample = &test->data[FLATTEN(j+start,0,test->sample_dim)];
+            
+            // Compute Forward pass
+            nn_forward(net, sample);
+            
+            // Fill in labels of testing set
+            for (k = 0; k < test->label_dim; ++k) {
+                test->labels[FLATTEN(j+start,k,test->label_dim)] = net->neurons[k + on_output].value;
+            }
+        }
+        
+        start += local_batch;
+    }
+    
+    return NN_E_OK;
+}
+
 int nn_print(const nn_arch *net)
 {
     if (!net || !net->is_initialized)
