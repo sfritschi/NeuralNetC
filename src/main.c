@@ -16,7 +16,7 @@ int main(void)
     const uint32_t N_test  = 1024;
     const uint32_t b = 16;
     const nn_scalar_t two_pi = 2.0f * M_PI;
-    const nn_scalar_t stddev = 1e-2f;
+    const nn_scalar_t stddev = 1e-1f;
     
     // Initialize training set (allocate + preprocessing)
     nn_dataset train, test = {0};
@@ -87,7 +87,7 @@ int main(void)
     
     // Train neural network
     const nn_scalar_t lr    = 1e-1;
-    const uint32_t n_epochs = 10000;
+    const uint32_t n_epochs = 50000;
     for (i = 0; i < n_epochs; ++i) {
         // Re-shuffle dataset
         nn_dataset_random_shuffle_samples(&gen, &train);

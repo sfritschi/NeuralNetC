@@ -15,6 +15,7 @@ int nn_optim_step_SGD(nn_arch *net, const nn_dataset *train,
         net->n_neurons[net->n_hidden_layers+1] != train->label_dim)
         return NN_E_INVALID_DIMENSIONS;
     
+    // TODO: Keep track of training loss/validation loss history
     const nn_loss_funcptr_t loss_fn = NN_LOSS_FN[loss_type].l;
     
     const uint32_t total_weights = net->offsets_weights[net->n_hidden_layers+1];

@@ -17,7 +17,7 @@ if __name__ == "__main__":
     plt.title(r"NN for dataset $y = \sin(x) + \epsilon,\;\epsilon\sim\mathcal{N}(0, \sigma^2)$")
     plt.xlabel(r"$x$")
     plt.ylabel(r"$y$", rotation=0)
-    #plt.plot(train[:,0], train[:,1], "ob", label=r"training data")
+    plt.plot(train[:,0], train[:,1], "ob", alpha=0.5, label=r"training data")
     plt.plot(gt[:,0], gt[:,1], "--k", label=r"ground truth")
     plt.plot(test[:,0], test[:,1], "-r", label=r"predicted")
     plt.grid(True)
