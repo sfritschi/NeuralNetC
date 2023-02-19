@@ -97,7 +97,7 @@ int main(void)
     
     // Predict on test set
     if (nn_predict(&net, &test) != NN_E_OK) {
-        fprintf(stderr, "Failed to transfer normalization\n");
+        fprintf(stderr, "Failed to predict on test set\n");
         nn_dataset_free(&train);
         nn_dataset_free(&test);
         free(y_gt);
