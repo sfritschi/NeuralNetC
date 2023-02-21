@@ -86,13 +86,14 @@ int main(void)
     }
     
     // Train neural network
-    const nn_scalar_t lr    = 1e-1;
+    const nn_scalar_t lr = 1e-1;
+    const nn_scalar_t weight_decay = 0.0;
     const uint32_t n_epochs = 50000;
     for (i = 0; i < n_epochs; ++i) {
         // Re-shuffle dataset
         nn_dataset_random_shuffle_samples(&gen, &train);
         // Optimization step
-        nn_optim_step_SGD(&net, &train, lr, NN_LOSS_SQUARED_ERROR);
+        nn_optim_step_SGD(&net, &train, lr, weight_decay, NN_LOSS_SQUARED_ERROR);
     }
     
     // Predict on test set

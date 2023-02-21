@@ -4,8 +4,10 @@
 #include <neuralnetc/neuralnet.h>
 
 int nn_optim_step_SGD(nn_arch *net, const nn_dataset *train, 
-                      nn_scalar_t learning_rate, enum nn_loss_fn_type loss_type)
+                      nn_scalar_t learning_rate, nn_scalar_t weight_decay,
+                      enum nn_loss_fn_type loss_type)
 {
+    assert(weight_decay >= 0.0 && "Require non-negative weight_decay");
     assert(net && train && "Expected non-NULL pointers");
     
     if (train->labels == NULL)
@@ -53,13 +55,18 @@ int nn_optim_step_SGD(nn_arch *net, const nn_dataset *train,
             nn_backward(net, y_label, loss_type);
         }        
         // Update weights and biases based on accumulated loss gradients (averaged)
-        for (j = 0; j < total_weights; ++j) {
-            net->weights[j].value -= learning_rate * net->weights[j].grad / (nn_scalar_t)local_batch;
-        }
+        // plus (optional) weight decay
+        if (weight_decay == (nn_scalar_t)0.0)
+            for (j = 0; j < total_weights; ++j)
+                net->weights[j].value -= learning_rate * net->weights[j].grad / (nn_scalar_t)local_batch;
+        else
+            for (j = 0; j < total_weights; ++j)
+                net->weights[j].value -= learning_rate * 
+                    (net->weights[j].grad / (nn_scalar_t)local_batch +
+                    2.0 * weight_decay * net->weights[j].value);
         
-        for (j = 0; j < total_biases; ++j) {
+        for (j = 0; j < total_biases; ++j)
             net->biases[j].value -= learning_rate * net->biases[j].grad / (nn_scalar_t)local_batch;
-        }
         
         start += local_batch;
     }
