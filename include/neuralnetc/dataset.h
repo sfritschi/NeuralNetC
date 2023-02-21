@@ -356,13 +356,28 @@ void nn_dataset_print(const nn_dataset *dataset)
     }
 }
 
-// TODO: Read dataset from file
+// TODO: Read dataset from file (labelled or unlabelled? Batch size?)
 int nn_dataset_read(nn_dataset *dataset, const char *filename) 
 {
     assert(dataset && "Expected non-NULL dataset");
     
     FILE *fp = fopen(filename, "r");
     if (!fp) return NN_E_FAILED_TO_READ_FILE;
+    
+    /*
+    uint32_t i, j;
+    for (i = 0; i < dataset->n_samples; ++i) {
+        for (j = 0; j < dataset->sample_dim; ++j) {
+            fscanf(fp, "%f", &dataset->data[FLATTEN(i, j, dataset->sample_dim)]);
+        }
+        
+        if (dataset->labels) {
+            for (j = 0; j < dataset->label_dim; ++j) {
+                fscanf(fp, "%f", &dataset->labels[FLATTEN(i, j, dataset->label_dim)]);
+            }
+        }
+    }
+    */
     
     fclose(fp);
     return NN_E_OK;

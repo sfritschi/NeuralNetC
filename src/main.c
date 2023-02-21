@@ -85,7 +85,19 @@ int main(void)
         return -1;
     }
     
-    // Train neural network
+    // Train neural network and write training loss per epoch to file
+    FILE *fp = fopen("results/train_history.dat", "w");
+    if (!fp) {
+        fprintf(stderr, "Failed to open file for writing training history\n");
+        nn_dataset_free(&train);
+        nn_dataset_free(&test);
+        free(y_gt);
+        nn_free(&net);
+        return -1;
+    }
+    
+    enum nn_errors err = NN_E_OK;
+    nn_scalar_t train_loss = 0.0;
     const nn_scalar_t lr = 1e-1;
     const nn_scalar_t weight_decay = 0.0;
     const uint32_t n_epochs = 50000;
@@ -93,8 +105,16 @@ int main(void)
         // Re-shuffle dataset
         nn_dataset_random_shuffle_samples(&gen, &train);
         // Optimization step
-        nn_optim_step_SGD(&net, &train, lr, weight_decay, NN_LOSS_SQUARED_ERROR);
+        err = nn_optim_step_SGD(&net, &train, lr, weight_decay, 
+                                NN_LOSS_SQUARED_ERROR, &train_loss);
+        assert(err == NN_E_OK);
+        
+        if (i == 0 || (i + 1) % 500 == 0)
+            printf("Epoch: %u Training MSE: %.8e\n", i + 1, train_loss);
+        
+        fprintf(fp, "%.8f\n", train_loss);
     }
+    fclose(fp);
     
     // Predict on test set
     if (nn_predict(&net, &test) != NN_E_OK) {
