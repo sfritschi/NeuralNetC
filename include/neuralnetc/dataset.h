@@ -359,6 +359,7 @@ void nn_dataset_print(const nn_dataset *dataset)
 // TODO: Read dataset from file (labelled or unlabelled? Batch size?)
 int nn_dataset_read(nn_dataset *dataset, const char *filename) 
 {
+    (void) dataset;
     assert(dataset && "Expected non-NULL dataset");
     
     FILE *fp = fopen(filename, "r");

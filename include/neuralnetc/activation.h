@@ -4,6 +4,8 @@
 #include <math.h>
 #include <neuralnetc/common.h>
 
+typedef nn_scalar_t (* nn_act_funcptr_t)(nn_scalar_t);
+
 // NOTE: Do not change order, otherwise nn_write()/nn_read() is inconsistent
 enum nn_activation_type {
     NN_ACTIVATION_IDENTITY = 0,
@@ -21,8 +23,8 @@ static const char *NN_ACTIVATION_NAMES[] = {
 
 typedef struct {
     enum nn_activation_type type;
-    nn_funcptr_t f;
-    nn_funcptr_t gradf;  
+    nn_act_funcptr_t f;
+    nn_act_funcptr_t gradf;  
 } nn_activation;
 
 static nn_scalar_t nn_sigmoid_func(nn_scalar_t x)

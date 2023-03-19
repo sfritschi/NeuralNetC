@@ -5,7 +5,6 @@
 #include <endian.h>
 
 typedef float nn_scalar_t;
-typedef nn_scalar_t (* nn_funcptr_t)(nn_scalar_t);
 
 static const char FILE_SIGNATURE[] = "NNC";
 // Subtract 1 due to null terminator

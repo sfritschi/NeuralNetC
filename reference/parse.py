@@ -1,8 +1,11 @@
 import sys
 from struct import unpack
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import TensorDataset, DataLoader
 
 activationNames   = ["identity", "sigmoid", "relu", "tanh"]
 activationMapping = [None, nn.Sigmoid(), nn.ReLU(), nn.Tanh()]
@@ -36,8 +39,8 @@ class NetworkArch(nn.Module):
                 raise RuntimeError("Require at least 1 neuron in every layer")
                 
             print(f"#Neurons per Layer: {self.nNeurons}")
-            self.layers = [nn.Linear(p, n) for p, n in \
-                           zip(self.nNeurons[:-1], self.nNeurons[1:])]
+            self.layers = nn.ModuleList([nn.Linear(p, n) for p, n in \
+                           zip(self.nNeurons[:-1], self.nNeurons[1:])])
                        
             buf = f.read(4*(self.nLayers - 1))
             activations = unpack("<" + "i" * (self.nLayers - 1), buf)
@@ -113,7 +116,91 @@ class NetworkArch(nn.Module):
     
 if __name__ == '__main__':
     
-    try: 
+    # Initialize networks
+    net_init  = NetworkArch("net_initial.nnc")
+    net_final = NetworkArch("net_final.nnc")
+    # Load datasets
+    d_train = torch.tensor(np.loadtxt("../results/train.dat", dtype=np.float32))
+    d_test  = torch.tensor(np.loadtxt("../results/test.dat", dtype=np.float32))
+    y_gt    = torch.sin(2.0 * torch.pi * d_test[:,0]).reshape(-1,1)
+    
+    n_samples  = d_train.shape[0]
+    lr         = 0.1
+    n_epochs   = 50000
+    batch_size = 16
+    weight_decay = 0.0
+    train = DataLoader(
+        TensorDataset(d_train[:,0].reshape(-1,1), d_train[:,1].reshape(-1,1)),
+        batch_size=batch_size, shuffle=False, drop_last=False
+    )
+    
+    optim = torch.optim.SGD(net_init.parameters(), lr=lr, weight_decay=weight_decay)
+    
+    train_history = []
+    for i in range(n_epochs):
+        
+        net_init.train()
+        
+        train_loss = 0.0
+        
+        for (x_train, y_train) in train:
+            
+            optim.zero_grad()
+            
+            y_pred      = net_init(x_train)
+            loss        = torch.mean((y_train - y_pred)**2)
+            train_loss += loss.item()
+            
+            loss.backward()
+            
+            optim.step()
+        
+        train_loss /= len(train)
+        
+        if (i == 0 or (i + 1) % 500 == 0):
+            print(f"Epoch: {i + 1} MSE: {train_loss}")
+        
+        train_history.append(train_loss)
+    
+    net_init.eval()
+    net_final.eval()
+    
+    with torch.no_grad():
+        print("MSE on test set: ")
+        print(torch.mean((net_init(d_test[:,0].reshape(-1,1)) - y_gt)**2))
+        
+        # Compute errors/differences in computed weights/biases
+        rmse_grad_weights = []
+        rmse_grad_biases  = []
+    
+        for pi, pf in zip(net_init.parameters(), net_final.parameters()):
+            rmse = (torch.mean((pi.data - pf.data)**2) /
+                   torch.mean(pi.data**2)) ** 0.5
+            if (len(pi.data.shape) == 1):
+                rmse_grad_biases.append(rmse.item())
+            else:
+                rmse_grad_weights.append(rmse.item())
+        
+        N = len(rmse_grad_weights)
+        assert(len(rmse_grad_biases) == N)
+        
+        # Print min., mean and max. RMSE for all gradients across all layers
+        print(f"RMSE weights: Min: {min(rmse_grad_weights)} Mean: {sum(rmse_grad_weights)/N} Max: {max(rmse_grad_weights)}")
+        print(f"RMSE biases : Min: {min(rmse_grad_biases)} Mean: {sum(rmse_grad_biases)/N} Max: {max(rmse_grad_biases)}")
+        
+        
+    plt.figure()
+    plt.title(r"Training history of MSE loss")
+    plt.xlabel(r"epoch")
+    plt.ylabel(r"MSE loss")
+    plt.loglog(np.arange(n_epochs)+1, train_history, "-b", label=r"train loss")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+    plt.close()
+    
+    """
+    try:    
         net_init = NetworkArch("net_initial.nnc")
         net_back = NetworkArch("net_backward.nnc", has_output=True)
         
@@ -160,3 +247,4 @@ if __name__ == '__main__':
         
     except RuntimeError as e:
         print(str(e))
+    """

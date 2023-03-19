@@ -1,4 +1,4 @@
-CC=cc
+CC=clang
 CFLAGS=-Wall -Wextra -Wpedantic -ggdb3 -D_GNU_SOURCE -std=c17
 
 INCLUDE=include

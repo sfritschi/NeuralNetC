@@ -54,6 +54,8 @@ int nn_optim_step_SGD(nn_arch *net, const nn_dataset *train,
             // Compute Backward pass (accumulate gradients)
             nn_backward(net, y_label, loss_type);
         }
+        train_l /= (nn_scalar_t)local_batch;
+        
         // Update weights and biases based on accumulated loss gradients (averaged)
         // plus (optional) weight decay
         if (weight_decay == (nn_scalar_t)0.0)
@@ -70,7 +72,7 @@ int nn_optim_step_SGD(nn_arch *net, const nn_dataset *train,
         
         start += local_batch;
     }
-    train_l /= (nn_scalar_t)train->n_samples;
+    train_l /= (nn_scalar_t)train->n_batches;
     // Set computed training loss
     if (train_loss) *train_loss = train_l;
     

@@ -19,7 +19,7 @@ int main(void)
     const nn_scalar_t stddev = 1e-1f;
     
     // Initialize training set (allocate + preprocessing)
-    nn_dataset train, test = {0};
+    nn_dataset train = {0}, test = {0};
     if (nn_dataset_init_labelled(&train, N_train, 1, b, 1) != NN_E_OK) {
         fprintf(stderr, "Failed to initialize dataset\n");
         nn_dataset_free(&train);
@@ -63,6 +63,8 @@ int main(void)
         return -1;
     }
     
+    // Shuffle dataset (only once for consistency)
+    nn_dataset_random_shuffle_samples(&gen, &train);
     // Write train and test sets to file
     nn_dataset_write(&train, "results/train.dat");
     
@@ -78,6 +80,16 @@ int main(void)
     
     if (nn_init(&gen, &net, n_neurons, activations, n_layers, NN_PARAM_INIT_GLOROT) != NN_E_OK) {
         fprintf(stderr, "Failed to initialize neural network\n");
+        nn_dataset_free(&train);
+        nn_dataset_free(&test);
+        free(y_gt);
+        nn_free(&net);
+        return -1;
+    }
+    
+    // Write initial network to file
+    if (nn_write(&net, "reference/net_initial.nnc") != NN_E_OK) {
+        fprintf(stderr, "Failed to write network to file\n");
         nn_dataset_free(&train);
         nn_dataset_free(&test);
         free(y_gt);
@@ -103,7 +115,7 @@ int main(void)
     const uint32_t n_epochs = 50000;
     for (i = 0; i < n_epochs; ++i) {
         // Re-shuffle dataset
-        nn_dataset_random_shuffle_samples(&gen, &train);
+        //nn_dataset_random_shuffle_samples(&gen, &train);
         // Optimization step
         err = nn_optim_step_SGD(&net, &train, lr, weight_decay, 
                                 NN_LOSS_SQUARED_ERROR, &train_loss);
@@ -115,6 +127,16 @@ int main(void)
         fprintf(fp, "%.8f\n", train_loss);
     }
     fclose(fp);
+    
+    // Write optimized network to file
+    if (nn_write(&net, "reference/net_final.nnc") != NN_E_OK) {
+        fprintf(stderr, "Failed to write final network to file\n");
+        nn_dataset_free(&train);
+        nn_dataset_free(&test);
+        free(y_gt);
+        nn_free(&net);
+        return -1;
+    }
     
     // Predict on test set
     if (nn_predict(&net, &test) != NN_E_OK) {

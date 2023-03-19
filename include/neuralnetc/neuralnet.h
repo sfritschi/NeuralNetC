@@ -141,11 +141,6 @@ static int nn_init_params(pcg32 *gen, nn_arch *net, enum nn_param_init_type para
     return NN_E_OK;
 }
 
-// Return empty network
-nn_arch nn_init_empty() {
-    return (nn_arch) {0};
-}
-
 int nn_init(pcg32 *gen, nn_arch *net, const uint32_t *n_neurons, 
             const enum nn_activation_type *activations, uint32_t n_layers,
             enum nn_param_init_type param_type)
